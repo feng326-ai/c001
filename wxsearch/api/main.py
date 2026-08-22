@@ -24,7 +24,8 @@ from ..models import FeedbackRequest
 from ..db_connector import DatabaseConnector
 from .auth import (current_user_optional, authenticate, make_session_token,
                    get_current_user, require_admin, require_super, hash_password, verify_password,
-                   COOKIE_NAME, SESSION_MAX_AGE)
+                   COOKIE_NAME, TENANT_COOKIE_NAME,
+                   make_tenant_scope_token, session_cookie_options)
 
 
 app = FastAPI(
@@ -38,12 +39,35 @@ app = FastAPI(
 from fastapi.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=512)
 
+from .tenant_session import (
+    router as tenant_session_router,
+    tenant_session_binding_enabled,
+    validate_tenant_feature_flags,
+)
+
+async def validate_tenant_session_rollout_flags():
+    """Reject unsafe or partially enabled tenant rollout configurations."""
+    validate_tenant_feature_flags()
+
+
+app.router.add_event_handler("startup", validate_tenant_session_rollout_flags)
+
 
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """全局登录保护：/admin* 未登录跳登录页；/api/* 未登录返 401；放行 登录/静态/健康。
     同时给后台页面加禁缓存头，避免浏览器用旧页面/旧 JS 导致会话失效时“翻页无数据”。"""
     path = request.url.path
+    if path.startswith("/api/v2/session") and not tenant_session_binding_enabled():
+        return JSONResponse(
+            {"detail": "not_found"},
+            status_code=404,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
+                "Vary": "Cookie",
+            },
+        )
     allow = path in ("/login", "/logout", "/api/v1/login", "/", "/health", "/favicon.ico",
                      "/api/v1/collect_logs/report",
                      "/api/v1/settings/collection") or path.startswith("/static")
@@ -63,9 +87,15 @@ async def auth_guard(request: Request, call_next):
             if _norm in _MENU_KEYS and not _menu_visible(_u.get("role", ""), _norm):
                 return RedirectResponse("/admin", status_code=302)
     resp = await call_next(request)
-    if path.startswith("/admin") or path == "/login":
+    if (
+        path.startswith("/admin")
+        or path == "/login"
+        or path.startswith("/api/v2/session")
+    ):
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         resp.headers["Pragma"] = "no-cache"
+        if path.startswith("/api/v2/session"):
+            resp.headers["Vary"] = "Cookie"
     return resp
 
 
@@ -1622,14 +1652,27 @@ async def login_submit(payload: LoginReq):
     if not user:
         return JSONResponse({"detail": "用户名或密码错误"}, status_code=401)
     resp = JSONResponse({"status": "ok"})
-    resp.set_cookie(COOKIE_NAME, make_session_token(user["id"]), max_age=SESSION_MAX_AGE, httponly=True, samesite="lax")
+    auth_token = make_session_token(user["id"])
+    cookie_options = session_cookie_options()
+    resp.set_cookie(COOKIE_NAME, auth_token, **cookie_options)
+    if tenant_session_binding_enabled():
+        validate_tenant_feature_flags()
+        scope_token = make_tenant_scope_token(auth_token, user["id"])
+        resp.set_cookie(TENANT_COOKIE_NAME, scope_token, **cookie_options)
+    else:
+        delete_options = dict(cookie_options)
+        delete_options.pop("max_age", None)
+        resp.delete_cookie(TENANT_COOKIE_NAME, **delete_options)
     return resp
 
 
 @app.get("/logout")
 async def logout():
     resp = RedirectResponse("/login", status_code=302)
-    resp.delete_cookie(COOKIE_NAME)
+    delete_options = session_cookie_options()
+    delete_options.pop("max_age", None)
+    resp.delete_cookie(COOKIE_NAME, **delete_options)
+    resp.delete_cookie(TENANT_COOKIE_NAME, **delete_options)
     return resp
 
 
@@ -1936,17 +1979,6 @@ async def del_blacklist(word: str, current_user: dict = Depends(require_super)):
     return {"status": "ok", "blacklist": bl}
 
 
-@app.get("/admin/feedback", response_class=HTMLResponse)
-async def feedback_page(request: Request):
-    u = current_user_optional(request)
-    if not u:
-        return RedirectResponse("/login", status_code=302)
-    if u["role"] != "super":
-        return HTMLResponse("<h3 style='font-family:sans-serif'>需要超级管理员权限</h3>", status_code=403)
-    p = templates_dir / "feedback_dashboard.html"
-    return HTMLResponse(p.read_text(encoding="utf-8")) if p.exists() else HTMLResponse("page missing", status_code=404)
-
-
 # 导入线索管理路由
 from . import leads
 app.include_router(leads.router, prefix="/api/v1", tags=["leads"])
@@ -1954,6 +1986,9 @@ app.include_router(leads.router, prefix="/api/v1", tags=["leads"])
 # 导入主办方库路由（独立业务模块）
 from . import organizers
 app.include_router(organizers.router, prefix="/api/v1", tags=["organizers"])
+
+# 租户会话只在主应用路由全部声明后装配；开关关闭时中间件统一返回 404。
+app.include_router(tenant_session_router)
 
 # 采集侧 -> 正式环境内部同步入口（时间戳 HMAC 鉴权，不使用登录 Cookie）。
 from . import sync

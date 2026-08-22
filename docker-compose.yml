@@ -204,6 +204,10 @@ services:
       ENVIRONMENT: production
       # 会话签名密钥（多团队登录 Cookie 签名用）；必须由服务器 .env 显式提供。
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET_required}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      TENANT_SESSION_BINDING_ENABLED: ${TENANT_SESSION_BINDING_ENABLED:-false}
+      TENANT_SESSION_REQUIRED: ${TENANT_SESSION_REQUIRED:-false}
+      TENANT_REVIEW_ENABLED: ${TENANT_REVIEW_ENABLED:-false}
       SYNC_SHARED_SECRET: ${SYNC_SHARED_SECRET:-}
       COLLECT_LOG_TOKEN: ${COLLECT_LOG_TOKEN:-}
       # 设备在线判定阈值（秒）：与 worker 保持一致，供 /api/v1/devices 在线状态计算。

@@ -12,6 +12,10 @@ x-common-environment: &staging-common-environment
   DB_POOL_MAX: "4"
   DB_CONNECT_TIMEOUT: "5"
   SESSION_SECRET: ${STAGING_SESSION_SECRET:?STAGING_SESSION_SECRET_required}
+  SESSION_COOKIE_SECURE: "true"
+  TENANT_SESSION_BINDING_ENABLED: "false"
+  TENANT_SESSION_REQUIRED: "false"
+  TENANT_REVIEW_ENABLED: "false"
   DEVICE_ONLINE_TIMEOUT: "600"
 
   # 三层保险之一：所有可能外呼或驱动真实采集的能力均硬关闭，不能被 .env 覆盖。

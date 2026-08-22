@@ -1,6 +1,6 @@
 # 当前开发批次与文件租约
 
-> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前 021/022 及运行时安全入口仅在代码与隔离 QA 中完成验收，尚未部署或启用租户业务功能。
+> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前 021/022、运行时安全入口及租户会话绑定仅在代码与隔离 QA 中完成验收，尚未部署或启用租户业务功能。
 
 ## 活动任务
 
@@ -17,6 +17,7 @@
 | `QA-CONTRACT-002` | QA 实现：`/root/collaboration_quality`；集成负责人 `/root` | 共享工作区 / `main` | `tests/test_tenant_rls_integration.py` | 独立非 superuser DB 角色验证 A 可读写 A、A 不可读写 B、无上下文零行/拒写、事务池复用无上下文残留、伪造业务 tenant 字段不能扩大 RLS | 已完成 | PostgreSQL 15 隔离栈 108 项测试通过；临时角色非 super/非 owner/无 BYPASSRLS；正反向越权、写入、事务重用及清理均通过 |
 | `TENANT-RUNTIME-ROLE-001` | 数据库发布实现：`/root/domain_migration`；Compose/集成：`/root` | 共享工作区 / `main` | `wxsearch/runtime_db_role.py`<br>`wxsearch/migrations/run.py`<br>`tools/check_secrets.py`<br>`tests/test_runtime_db_role.py`<br>`tests/test_runtime_db_role_integration.py`<br>`tests/test_runtime_compose_contract.py`<br>`tests/test_secret_scan.py`<br>`.env.example`<br>`.env.staging.example`<br>`docker-compose.yml`<br>`docker-compose.prod.yml`<br>`docker-compose.staging.yml`<br>`docker-compose.qa.yml`<br>`docs/环境拆分与发布手册.md`<br>`docs/租户运行时安全地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | 迁移 owner 与应用运行 LOGIN 分离；真实角色名/密码仅由环境注入；运行角色非 super、无 BYPASSRLS、非表 owner、无 schema CREATE 和迁移 ledger 写权限 | 已完成 | 四份 Compose 契约、参数化 provision/check 和真实运行 LOGIN 权限矩阵均通过；PG15 隔离栈共 151 项测试通过；本批未修改任何已部署数据库角色 |
 | `TENANT-TRANSACTION-AUTH-001` | 事务实现：`/root`；QA 实现：`/root/collaboration_quality`；架构只读审查：`/root/target_architecture` | 共享工作区 / `main` | `wxsearch/db_connector.py`<br>`docs/migrations/022_tenant_membership_discovery.sql`<br>`docs/migrations/checksum_baseline.json`<br>`tests/test_tenant_transaction.py`<br>`tests/test_tenant_transaction_integration.py`<br>`tests/test_tenant_migration_contract.py`<br>`docs/租户身份与RLS地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/开发批次/ACTIVE.md` | 同一物理连接/事务；认证 `users.public_id` + active membership；选租户前只列本人 active memberships；user/tenant GUC 均只作第二道作用域 | 已完成 | commit/rollback/异常/线程并发/池复用不残留，inactive/cross-tenant 拒绝且窄入口不可扩大读写；022 和入口保持未部署、未接线、未回填状态 |
+| `TENANT-SESSION-BINDING-002` | 会话实现与集成：`/root`；安全/QA/架构/数据库只读审查：协作智能体 | 共享工作区 / `main` | `wxsearch/api/auth.py`<br>`wxsearch/api/tenant_session.py`<br>`wxsearch/api/main.py`<br>`tests/test_tenant_session_binding.py`<br>`tests/test_tenant_session_routes.py`<br>`.env.example`<br>`.env.staging.example`<br>`docker-compose.yml`<br>`docker-compose.prod.yml`<br>`docker-compose.staging.yml`<br>`docs/租户会话绑定契约_v1.md`<br>`docs/租户会话绑定验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | 旧 `wxsess` 保持兼容；独立签名 `wxscope` 绑定登录指纹；bind/unbind CSRF；每请求实时 membership 复核；三开关默认 false | 已完成 | 四份 Compose、Ruff、001～022 迁移复核及 193 项测试通过；flag 关闭时旧系统零行为变化，required/review 在本版本 fail closed；伪造/跨用户/stale/inactive 均拒绝；本批未部署、未回填、未开放审核业务 |
 
 ## 下一批候选（尚未领取、没有写租约）
 
@@ -26,6 +27,9 @@
 | `QA-SUPPLYCHAIN-002` | Gitleaks 全历史、服务端/Windows 采集依赖锁、pip-audit、Compose 策略和 Trivy 镜像门禁 | 先拆分运行时依赖；对历史命中逐条核实，不用 baseline 掩盖真实凭据 |
 | `CLEANUP-REDIS-SET-003` | 把结果缓存的弃用 `setex` 调用改为 `set(..., ex=...)` 并清除 5 条测试警告 | 不改变 key、TTL 或返回语义；单独小提交 |
 | `TENANT-OWNER-SPLIT-002` | 把当前一次性管理身份进一步拆为 NOLOGIN 对象 owner、迁移执行角色与运行 LOGIN | 先在影子库验证函数 owner、默认权限、迁移回退和运维可恢复性；不得直接改生产 owner |
+| `SESSION-REVOCATION-003` | 建立服务端可撤销的 `user_sessions` 与 `users.session_version`，使退出、禁用和凭据泄露处置能立即失效旧会话 | 先冻结会话生命周期、并发设备、强制下线和保留期；运行角色不得直接访问会话表，只开放固定 `search_path` 的窄函数 |
+| `TENANT-MAPPING-003` | 用受审清单显式建立三家公司、普通用户及成员关系，不从旧 team/role 自动推断租户 | 先只读核对正式环境真实公司、用户和团队清单；业务负责人逐项确认；提供预演、差异报告、幂等回填与回退方案 |
+| `REVIEW-VERTICAL-SLICE-001` | 建立活动届次、租户资源授权、候选线索、资源审核和事务 outbox 的首个端到端业务切片 | 先冻结 `collection_mode`（实时信号/历史回填）、审核结论字典、三家公司资源竞争规则和重复线索归属；不提前接 CRM/OA |
 
 ## 当前锁与禁止事项
 
