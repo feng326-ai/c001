@@ -1,0 +1,3 @@
+docs/migrations/*.sql text eol=lf
+docs/migrations/*.json text eol=lf
+.github/workflows/*.yml text eol=lf

@@ -7,7 +7,9 @@ import hmac
 import json
 import logging
 import os
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -255,6 +257,12 @@ class SystemSettingsUpdate(BaseModel):
     schema_hint: Optional[str] = None
     clean_enabled: Optional[bool] = None
 
+
+class ModelProbeRequest(BaseModel):
+    """超级管理员在保存前探测一个受控 OpenAI 兼容端点。"""
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
 class CollectionSettingsUpdate(BaseModel):
     """采集参数更新请求（写回 rule_config.json 的 collect_settings 块，供采集器拉取）"""
     wechat: Optional[dict] = None   # 搜一搜筛选：filter_sort/filter_type/filter_time/filter_scope/max_items_per_keyword/max_scrolls
@@ -347,7 +355,7 @@ async def health_check():
 # ==================== 系统设置 API ====================
 
 @app.get("/api/v1/settings/system")
-async def get_system_settings():
+async def get_system_settings(current_user: dict = Depends(require_super)):
     """
     获取系统配置（LLM 参数 + 提示词）
     
@@ -475,22 +483,74 @@ async def update_system_settings(update: SystemSettingsUpdate, current_user: dic
         raise HTTPException(status_code=500, detail=f"保存配置失败：{str(e)}")
 
 
-@app.get("/api/v1/settings/models")
-async def list_available_models(base_url: Optional[str] = None, api_key: Optional[str] = None):
+def _validate_model_probe_base_url(
+    candidate: str, configured_base_url: str
+) -> str:
+    """Allow the configured endpoint or an explicitly allowlisted HTTPS host."""
+    normalized = str(candidate or "").strip().rstrip("/")
+    configured = str(configured_base_url or "").strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HTTPException(status_code=400, detail="模型服务地址格式不安全")
+    if normalized == configured:
+        return normalized
+
+    allowed_hosts = {
+        item.strip().lower()
+        for item in os.getenv("LLM_PROBE_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+    if parsed.scheme != "https" or parsed.hostname.lower() not in allowed_hosts:
+        raise HTTPException(
+            status_code=400,
+            detail="自定义模型地址必须使用 HTTPS 且主机已加入服务端允许列表",
+        )
+    return normalized
+
+
+@app.post("/api/v1/settings/models")
+async def list_available_models(
+    probe: ModelProbeRequest,
+    current_user: dict = Depends(require_super),
+):
     """
     拉取当前大模型服务的可用模型列表（OpenAI 兼容 GET /models）。
 
-    GET /api/v1/settings/models
-    可选 query：base_url / api_key（页面可在保存前用临时值试拉）；
-    不传则用当前已生效的客户端配置。
+    POST /api/v1/settings/models
+    可选 JSON：base_url / api_key（密钥不进入 URL、浏览器历史或代理日志）。
+    自定义地址必须显式提供临时密钥，绝不继承服务器已保存密钥。
     返回：{"models": ["..."], "count": N}
     """
     try:
         from wxsearch.ai_filters.llm_client import LLMClient, get_client
-        if base_url or api_key:
-            client = LLMClient(base_url=base_url or None, api_key=api_key or None)
+
+        configured_client = get_client()
+        requested_base_url = str(probe.base_url or "").strip()
+        temporary_key = str(probe.api_key or "").strip()
+        if requested_base_url:
+            target = _validate_model_probe_base_url(
+                requested_base_url, configured_client.base_url
+            )
+            is_custom = target != configured_client.base_url.rstrip("/")
+            if is_custom and not temporary_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="探测自定义模型地址必须显式提供临时密钥",
+                )
         else:
-            client = get_client()
+            target = configured_client.base_url
+
+        if temporary_key:
+            client = LLMClient(base_url=target, api_key=temporary_key)
+        else:
+            client = configured_client
         models = client.list_models()
         return {"models": models, "count": len(models)}
     except Exception as e:
@@ -561,15 +621,33 @@ async def update_collection_settings(update: CollectionSettingsUpdate, current_u
 _COLLECT_LOG_KEEP = 20000   # 最多保留条数，超出裁剪最旧
 
 @app.post("/api/v1/collect_logs/report")
-async def report_collect_logs(batch: CollectLogBatch, x_token: Optional[str] = Query(default=None)):
+async def report_collect_logs(
+    batch: CollectLogBatch,
+    x_collect_token: Optional[str] = Header(
+        default=None, alias="X-Collect-Token"
+    ),
+    x_token: Optional[str] = Query(default=None),
+):
     """采集机（VM）批量上报运行日志。无登录会话，用固定令牌鉴权。
 
-    POST /api/v1/collect_logs/report?x_token=<令牌>
+    POST /api/v1/collect_logs/report，令牌放在 X-Collect-Token 请求头。
+    x_token query 默认拒绝；仅当 ALLOW_LEGACY_COLLECT_LOG_QUERY=1 时临时兼容。
     Body: {"logs": [{"device_id": "sogou-vm-01", "level": "ERROR", "message": "..."}]}
     """
     if not _COLLECT_LOG_TOKEN:
         raise HTTPException(status_code=503, detail="采集日志令牌未配置")
-    if not hmac.compare_digest(x_token or "", _COLLECT_LOG_TOKEN):
+    supplied_token = x_collect_token or ""
+    if not supplied_token and x_token:
+        legacy_query_enabled = os.getenv(
+            "ALLOW_LEGACY_COLLECT_LOG_QUERY", ""
+        ).strip().lower() in {"1", "true", "yes"}
+        if legacy_query_enabled:
+            log.warning(
+                "接受了一次旧版 query 采集日志令牌；请升级节点并关闭 "
+                "ALLOW_LEGACY_COLLECT_LOG_QUERY"
+            )
+            supplied_token = x_token
+    if not hmac.compare_digest(supplied_token, _COLLECT_LOG_TOKEN):
         raise HTTPException(status_code=401, detail="令牌无效")
     if not batch.logs:
         return {"inserted": 0}

@@ -1,17 +1,20 @@
 """配置加载模块。
 
-从 JSON 文件读取配置，缺省字段回退到内置默认值，避免配置文件不完整时崩溃。
+从显式存在的 JSON 文件读取配置；文件内缺省字段回退到内置默认值。
+运行时文件不存在时拒绝启动，避免采集节点静默使用错误身份、关键词或端点。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
+from urllib.parse import unquote, urlsplit
 
 
-# ---- 内置默认配置（当 config.json 缺字段时兜底） ----
+# ---- 内置字段默认值（运行时 config.json 必须存在，文件内缺字段时兜底） ----
 _DEFAULTS: Dict[str, Any] = {
     "keywords": ["人工智能"],
     "result_type": "article",
@@ -290,13 +293,85 @@ class AppConfig:
         )
 
 
+def _looks_like_placeholder(value: str) -> bool:
+    """Recognize common placeholder variants after URL decoding/case folding."""
+    normalized = "".join(
+        character
+        for character in unquote(str(value or "")).strip().lower()
+        if character.isalnum()
+    )
+    return any(
+        marker in normalized
+        for marker in (
+            "replacewith",
+            "yourpassword",
+            "yourredis",
+            "yourvmid",
+            "changeme",
+            "placeholder",
+            "example",
+        )
+    )
+
+
+def _validate_enabled_runtime_contract(raw: Dict[str, Any], config: AppConfig) -> None:
+    """Fail closed when enabled distributed modes rely on defaults/placeholders."""
+    distributed_raw = raw.get("distributed")
+    if not isinstance(distributed_raw, dict):
+        distributed_raw = {}
+
+    if config.distributed.enabled:
+        for field_name in ("broker_url", "result_backend"):
+            if field_name not in distributed_raw:
+                raise ValueError(
+                    f"distributed.enabled=true 时必须在运行时配置中显式填写 {field_name}"
+                )
+            value = str(distributed_raw.get(field_name) or "").strip()
+            parsed = urlsplit(value)
+            if (
+                parsed.scheme not in {"redis", "rediss"}
+                or not parsed.hostname
+                or _looks_like_placeholder(value)
+            ):
+                raise ValueError(f"无效或仍为占位值的 distributed.{field_name}")
+
+    if config.unattended.enabled:
+        if not config.distributed.enabled:
+            raise ValueError(
+                "unattended.enabled=true 时必须同时启用 distributed.enabled"
+            )
+        unattended_raw = raw.get("unattended")
+        if not isinstance(unattended_raw, dict) or "vm_instance_id" not in unattended_raw:
+            raise ValueError(
+                "unattended.enabled=true 时必须显式填写本机唯一 vm_instance_id"
+            )
+        vm_instance_id = str(unattended_raw.get("vm_instance_id") or "").strip()
+        normalized_vm_id = "".join(
+            character
+            for character in unquote(vm_instance_id).lower()
+            if character.isalnum()
+        )
+        if (
+            not vm_instance_id
+            or normalized_vm_id == "vm01"
+            or _looks_like_placeholder(vm_instance_id)
+        ):
+            raise ValueError("unattended.vm_instance_id 为空、通用默认值或占位值")
+
+
 def load_config(path: str = "config.json") -> AppConfig:
-    """从 JSON 文件加载配置；文件不存在时使用默认配置。"""
-    raw: Dict[str, Any] = {}
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    return AppConfig.from_dict(raw)
+    """从运行时 JSON 加载配置；缺文件时 fail closed。"""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"运行时配置不存在：{os.path.abspath(path)}；"
+            "请先复制 config.example.json 为 config.json，"
+            "再填写本机唯一身份、标定参数和运行时凭据"
+        )
+    with open(path, "r", encoding="utf-8") as f:
+        raw: Dict[str, Any] = json.load(f)
+    config = AppConfig.from_dict(raw)
+    _validate_enabled_runtime_contract(raw, config)
+    return config
 
 
 def load_raw(path: str = "config.json") -> Dict[str, Any]:
@@ -314,6 +389,27 @@ def save_config(updates: Dict[str, Any], path: str = "config.json") -> Dict[str,
     """
     current = load_raw(path)
     merged = _deep_merge(current, updates or {})
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix=".config-", suffix=".json.tmp", dir=directory, text=True
+    )
+    try:
+        os.chmod(temporary_path, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as config_file:
+            json.dump(merged, config_file, ensure_ascii=False, indent=2)
+            config_file.flush()
+            os.fsync(config_file.fileno())
+        os.replace(temporary_path, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        try:
+            os.unlink(temporary_path)
+        except OSError:
+            pass
+        raise
     return merged

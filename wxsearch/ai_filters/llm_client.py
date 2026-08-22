@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from typing import List, Optional
 
 import requests
@@ -96,7 +97,10 @@ def get_clean_enabled(default: bool = False) -> bool:
 
 
 def _secrets_path() -> str:
-    """secrets.json 的绝对路径（与 rule_config.json 同目录，已被 .gitignore 忽略）。"""
+    """密钥文件路径；生产应通过环境变量放到仓库外运行时目录。"""
+    configured = os.getenv("WXSEARCH_SECRETS_PATH", "").strip()
+    if configured:
+        return os.path.abspath(configured)
     try:
         from wxsearch.ai_filters.rule_scorer import _DEFAULT_CONFIG_PATH
         return os.path.join(os.path.dirname(_DEFAULT_CONFIG_PATH), "secrets.json")
@@ -117,7 +121,7 @@ def load_secret_api_key() -> str:
 
 
 def save_secret_api_key(api_key: str) -> None:
-    """把 api_key 写入 secrets.json（绝不写进 rule_config.json，不入库）。"""
+    """以 0600 权限和原子替换写密钥，避免半写入或宽权限文件。"""
     path = _secrets_path()
     if not path:
         raise RuntimeError("无法定位 secrets.json 路径")
@@ -129,8 +133,29 @@ def save_secret_api_key(api_key: str) -> None:
         except Exception:  # noqa: BLE001
             data = {}
     data["api_key"] = str(api_key or "")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix=".secrets-", suffix=".json.tmp", dir=directory, text=True
+    )
+    try:
+        os.chmod(temporary_path, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as secret_file:
+            json.dump(data, secret_file, ensure_ascii=False, indent=2)
+            secret_file.flush()
+            os.fsync(secret_file.fileno())
+        os.replace(temporary_path, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        try:
+            os.unlink(temporary_path)
+        except OSError:
+            pass
+        raise
 
 
 class LLMClient:

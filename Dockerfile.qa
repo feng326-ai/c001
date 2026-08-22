@@ -1,0 +1,11 @@
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+WORKDIR /workspace
+
+COPY requirements.txt requirements-dev.txt ./
+RUN python -m pip install --no-cache-dir \
+    -r requirements.txt -r requirements-dev.txt
+
+CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]

@@ -58,7 +58,8 @@ Weixin 4.0 是双窗口结构，程序据此驱动：
 ss/
 ├── main.py                 # 命令行入口
 ├── web.py                  # 本地 Web 后台入口
-├── config.json             # 配置（关键词、选择器、限速等）
+├── config.example.json     # 可入库的安全模板（所有危险功能默认关闭）
+├── config.json             # 每台机器的运行时配置（本地生成、Git/Docker 忽略）
 ├── requirements.txt
 ├── wxsearch/
 │   ├── config.py           # 配置加载与写回（缺字段自动兜底）
@@ -84,11 +85,27 @@ ss/
 
 ```powershell
 pip install -r requirements.txt
+Copy-Item config.example.json config.json -ErrorAction Stop
 ```
+
+`config.json` 不随 Git 或 Docker 镜像交付，已有机器升级时不得用模板覆盖现有文件。
+首次安装必须先复制模板，再填写本机唯一的 `vm_instance_id`、逐机标定坐标和运行时
+Redis 凭据；未替换占位值前保持 `distributed.enabled=false`、
+`unattended.enabled=false`。配置文件缺失时程序会拒绝启动，不再静默采用内置身份、
+关键词或端点；启用分布式无人值守后，通用 `vm-01`、占位身份、缺失/占位 Redis
+端点也会被拒绝。程序写回配置时采用原子替换并在 Linux 上设置 `0600`。
+
+Windows VM 首次下发或迁移配置后，还必须用 `icacls` 移除继承权限，只保留采集运行
+账号、`Administrators` 和 `SYSTEM`；不要依赖 Git/Docker 忽略规则代替文件 ACL。
+
+从 `git archive` 生成 VM 发布包时也不会包含 `config.json`。切换版本前必须把该 VM
+现有的受保护运行时配置复制或挂载到候选目录，并只核对允许字段；禁止把真实配置
+打回发布包、构建上下文或仓库。
 
 ## 使用
 
-1. 编辑 `config.json` 里的 `keywords`（也可用命令行覆盖）。
+1. 确认已从 `config.example.json` 创建本机 `config.json`，再填写 `keywords`
+   （也可用命令行覆盖）。
 2. 打开并登录微信 PC 客户端（**无需手动打开搜一搜**，程序会自动经左侧入口打开）。
 3. 运行：
 

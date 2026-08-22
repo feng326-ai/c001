@@ -1,0 +1,95 @@
+name: ${QA_COMPOSE_PROJECT_NAME:-xiansuo-qa}
+
+# 一次性质量门禁环境：不发布端口、不连接现有网络、不保留数据卷。
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: wx_search_lease_qa_ci
+      POSTGRES_USER: qa_foundation
+      POSTGRES_PASSWORD: ${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD_required}
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks: [qa_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qa_foundation -d wx_search_lease_qa_ci"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: "no"
+    command:
+      - sh
+      - -ec
+      - exec redis-server --save '' --appendonly no --requirepass "$$QA_REDIS_PASSWORD"
+    environment:
+      QA_REDIS_PASSWORD: ${QA_REDIS_PASSWORD:?QA_REDIS_PASSWORD_required}
+    tmpfs:
+      - /data
+    networks: [qa_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$QA_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  schema-init:
+    profiles: ["test"]
+    image: postgres:15-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD_required}
+    volumes:
+      - ./docs:/workspace/docs:ro
+    networks: [qa_internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - psql -h postgres -U qa_foundation -d wx_search_lease_qa_ci -v ON_ERROR_STOP=1 -f /workspace/docs/db_schema.sql
+
+  test-runner:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile.qa
+    restart: "no"
+    working_dir: /workspace
+    environment:
+      ENVIRONMENT: qa
+      DATABASE_URL: postgresql://qa_foundation:${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_lease_qa_ci
+      REDIS_URL: redis://:${QA_REDIS_PASSWORD:?QA_REDIS_PASSWORD_required}@redis:6379/15
+      RUN_LEASE_INTEGRATION: "1"
+      RUN_MIGRATION_INTEGRATION: "1"
+      ALLOW_DESTRUCTIVE_TESTS: "1"
+      AI_ENABLED: "false"
+      LLM_CLEAN_ENABLED: "false"
+      PROD_SYNC_ENABLED: "false"
+      SCHEDULER_ENABLED: "false"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./:/workspace:ro
+    networks: [qa_internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - >-
+        python tools/check_migrations.py &&
+        ruff check --no-cache --select E9,F63,F7,F82 wxsearch tools tests &&
+        python -m wxsearch.migrations.run &&
+        python -m wxsearch.migrations.run --check &&
+        pytest -q -p no:cacheprovider
+
+networks:
+  qa_internal:
+    internal: true

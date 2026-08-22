@@ -1,0 +1,31 @@
+{
+  "algorithm": "sha256-canonical-lf-v1",
+  "legacy_md5_through": "020",
+  "migrations": {
+    "001": {"sha256": "c83fd7c3a9b54fb2d3e3408c4e73f41f1789a73fb409efb6c602e5cce85c1c03", "accepted_legacy_md5": ["33fdb1a52a4866184fd49de3871d957c"]},
+    "002": {"sha256": "225bb893f1f38dd39b07cc9447e400f30cff722f83ebd9a62e6eb8cce727baf5", "accepted_legacy_md5": ["bd1c8049f514db9e01280e471cf41eee"]},
+    "003": {"sha256": "3612024e75d92f6e53475b465407222014f5270006eb50c9d63323cf7b71f906", "accepted_legacy_md5": ["4e55f941a10eff4aa9a749a23e90102e"]},
+    "004": {"sha256": "7a41e7d754f5b177450e3c5a55e495bfca9181c2bcc91529f18cb9913bfedf03", "accepted_legacy_md5": ["66f1bdf40ca76a7302acd5e1ccd8de1b"]},
+    "005": {"sha256": "afa3a9dcff15db2f96eb8f13e4fabfb9337d456aaeb21f0565b1e89be99d11b2", "accepted_legacy_md5": ["69f5f89c8ac846469d95994e09b5f025"]},
+    "006": {"sha256": "c75d4cdc8dc5a7f275ee76c2e628dbe40c2a68c0bba8b26a5828c875efe4149c", "accepted_legacy_md5": ["9af28cb825fab676f9d88280a6dacada"]},
+    "007": {"sha256": "aad112ab99b8a93f20d6ee4d26d962e5327750f7a926d296d7e9354d76b0534e", "accepted_legacy_md5": ["6d61d1a27bb056b4a3fee5fa685dab8d"]},
+    "008": {"sha256": "d349eb8f7ffc220f8263690e61e28af1b3e9c50181ebe7848476bd4233e5e357", "accepted_legacy_md5": ["d71542b946b356b5fa84b3072f8dc149"]},
+    "009": {"sha256": "dd080a79120ce10122dbe71c3d118c08f3654cb42e1220d6e9d5bd6106208ffb", "accepted_legacy_md5": ["f5d043479ffb42c03b412b6839b23132"]},
+    "010": {"sha256": "1679a91e4cb80478fd73856bdb8051af967e32348d5fef7e40bb38a655edd6c4", "accepted_legacy_md5": ["d0e3f00d2c321690944cf1382ac09f8a"]},
+    "011": {"sha256": "e6a4454d21d01d517b26aa5c587be5c701d4dda55a55d8e2cbe9777ec52d6419", "accepted_legacy_md5": ["f1bde454e2b0477f8bb856f0f62a07f4"]},
+    "012": {"sha256": "dd33011f889b22cc20729c9d9ae5a7bbacb42585e34a2e99be5e7edb97815ac8", "accepted_legacy_md5": ["7206b7ab99ef8f86d39a4c482381a65f"]},
+    "013": {"sha256": "d9ddd559e86a6f8854a262c711b1a9736e4452b8e60f87008952aa2d40f183c9", "accepted_legacy_md5": ["4d08be33e2a6aa7a82e0161a699502da"]},
+    "014": {"sha256": "d7891a89331ec1f47616d70bb4decb897408269a394057b82f1a22e1a87b5280", "accepted_legacy_md5": ["3e8ef9d643b58960670694b0094b79ee"]},
+    "015": {"sha256": "1445f54bf498640ebae6270ed419d9346a900f0258ee00e09179fb5e6c57e83a", "accepted_legacy_md5": ["0ee065219948fa9a1979432fc478e049"]},
+    "016": {"sha256": "cf1c7dbde76a030a1cabeb834078be9768818d0b6e626f9b295e6e1f3d613222", "accepted_legacy_md5": ["1307df77a015c2be128b4828dc60ed36"]},
+    "017": {"sha256": "a67a2702acaaf92e0a5fe05172b0538287c0de13c55fbcc67207b20e8cf92d4d", "accepted_legacy_md5": ["ddb58c21f67180824af7f9bf7f7d4651"]},
+    "018": {
+      "sha256": "568c898581afb27884b1b79e952f1ceb876ca5be4950bd4d9ef1eefcaf8fe9e4",
+      "accepted_legacy_md5": ["0158c7d91dc5351d811fad86c805c334", "bbaae3b66fb9b6f1fe7be94b46391093"],
+      "legacy_drift_md5": ["bbaae3b66fb9b6f1fe7be94b46391093"],
+      "legacy_final_state": "018"
+    },
+    "019": {"sha256": "b983ded86f38588e8f95bde5c02de28b704b67b77d3dd3ee62975d430dd65478", "accepted_legacy_md5": ["66d0b5121fe1bb5925fe5d9d145e37de"]},
+    "020": {"sha256": "5ae861eb03f561ae2c56a29d6e070349d129cbf980e1bdee0a58583252b994e6", "accepted_legacy_md5": ["db72b81d9d6ee7c14bdaacae0af5934a"]}
+  }
+}

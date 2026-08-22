@@ -292,10 +292,14 @@
       const key = document.getElementById('apiKey').value.trim();
       btn.disabled = true; btn.textContent = '拉取中...';
       try {
-        const params = new URLSearchParams();
-        if (baseUrl) params.set('base_url', baseUrl);
-        if (key) params.set('api_key', key);
-        const resp = await fetch(`${API_BASE}/settings/models?${params.toString()}`);
+        const resp = await fetch(`${API_BASE}/settings/models`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base_url: baseUrl || null,
+            api_key: key || null,
+          }),
+        });
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
         const list = document.getElementById('modelList');

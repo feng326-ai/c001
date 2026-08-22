@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     version VARCHAR(255) PRIMARY KEY,
     applied_at TIMESTAMPTZ DEFAULT NOW(),
     description TEXT,
-    checksum VARCHAR(64)  -- 可选：文件内容的 MD5/SHA256，防止脚本被篡改
+    checksum VARCHAR(64) NOT NULL  -- 新记录写规范化 LF SHA-256；历史精确 MD5 由基线兼容
 );
 
 -- 索引

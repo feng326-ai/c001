@@ -8,7 +8,6 @@ REM ============================================================
 
 REM —— 端点和凭据必须由计划任务/系统环境注入，绝不写进仓库 ——
 if not defined REDIS_URL goto missing_config
-if not defined DATABASE_URL goto missing_config
 if not defined API_BASE goto missing_config
 if not defined SOGOU_API_TOKEN goto missing_config
 
@@ -30,5 +29,5 @@ timeout /t 10 /nobreak >NUL
 goto loop
 
 :missing_config
-echo 缺少 REDIS_URL / DATABASE_URL / API_BASE / SOGOU_API_TOKEN 环境变量，拒绝启动。
+echo 缺少 REDIS_URL / API_BASE / SOGOU_API_TOKEN 环境变量，拒绝启动。
 exit /b 2

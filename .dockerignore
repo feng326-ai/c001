@@ -12,6 +12,7 @@
 *.crt
 secrets/
 wxsearch/config/secrets.json
+/config.json
 
 # 运行时数据与部署产物。
 logs/

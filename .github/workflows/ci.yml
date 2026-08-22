@@ -1,0 +1,74 @@
+name: quality-gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-gates:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Secret repository gate
+        run: python tools/check_secrets.py
+      - name: Immutable migration gate against PR base
+        if: github.event_name == 'pull_request'
+        run: >-
+          python tools/check_migrations.py
+          --base-ref "${{ github.event.pull_request.base.sha }}"
+      - name: Immutable migration gate against previous main
+        if: github.event_name == 'push'
+        run: >-
+          python tools/check_migrations.py
+          --base-ref "${{ github.event.before }}"
+      - name: Syntax and fatal static checks
+        run: |
+          python -m compileall -q wxsearch tools tests
+          ruff check --no-cache --select E9,F63,F7,F82 wxsearch tools tests
+      - name: Fast tests
+        run: pytest -q -p no:cacheprovider
+      - name: Render Compose contracts with placeholders
+        run: |
+          docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+          docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
+          docker compose --env-file .env.qa.example -f docker-compose.qa.yml config --quiet
+
+  postgres-redis-integration:
+    runs-on: ubuntu-24.04
+    needs: fast-gates
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Start disposable PostgreSQL and Redis
+        run: docker compose --env-file .env.qa.example -f docker-compose.qa.yml up -d --wait postgres redis
+      - name: Initialize base schema
+        run: docker compose --env-file .env.qa.example -f docker-compose.qa.yml --profile test run --rm schema-init
+      - name: Run migrations and real integration tests
+        run: docker compose --env-file .env.qa.example -f docker-compose.qa.yml --profile test run --rm test-runner
+      - name: Destroy disposable environment
+        if: always()
+        run: docker compose --env-file .env.qa.example -f docker-compose.qa.yml --profile test down --volumes --remove-orphans

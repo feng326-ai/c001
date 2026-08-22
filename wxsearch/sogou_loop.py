@@ -9,7 +9,6 @@
 
 端点全部走环境变量（不得在源码中提供真实地址或凭据）：
     REDIS_URL     Celery broker
-    DATABASE_URL  任务调度数据库
     API_BASE      配置拉取/日志上报地址
     SOGOU_API_TOKEN 日志上报令牌（与服务端 _COLLECT_LOG_TOKEN 一致）
 
@@ -45,7 +44,6 @@ def _required_env(name: str) -> str:
 
 
 _required_env("REDIS_URL")
-_required_env("DATABASE_URL")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -130,7 +128,8 @@ class RemoteLogHandler(logging.Handler):
                  flush_interval: float = 20.0, max_buffer: int = 100):
         super().__init__(level=logging.INFO)
         self.device_id = device_id
-        self.url = f"{base_url}/api/v1/collect_logs/report?x_token={token}"
+        self.url = f"{base_url}/api/v1/collect_logs/report"
+        self.token = token
         self.flush_interval = flush_interval
         self.max_buffer = max_buffer
         self._buf: list = []
@@ -158,7 +157,12 @@ class RemoteLogHandler(logging.Handler):
             return
         try:
             import requests
-            requests.post(self.url, json={"logs": items}, timeout=10)
+            requests.post(
+                self.url,
+                json={"logs": items},
+                headers={"X-Collect-Token": self.token},
+                timeout=10,
+            )
         except Exception:  # noqa: BLE001
             pass
 

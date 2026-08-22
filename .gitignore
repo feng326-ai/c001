@@ -104,8 +104,8 @@ wxsearch/config/secrets.json
 temp/
 .cache/
 
-# Git/GitHub 忽略的文件
-.gitattributes
+# Git 属性必须入库，用来冻结迁移 SQL 的 LF 换行。
+!.gitattributes
 
 # 文档备份
 README.bak.md
@@ -118,12 +118,17 @@ README.bak.md
 # 环境变量文件
 .env
 .env.local
+.env.*
+!.env.example
+!.env.staging.example
+!.env.qa.example
 
 # 敏感信息 (如果有)
 *.pem
 *.key
 *.crt
 secrets/
+secrets.json
 
 # 一次性部署脚本与生成文档（非项目源码，只在本地保留）
 /_deploy_tmp/
