@@ -43,6 +43,7 @@ class DistributedTaskScheduler:
     HEARTBEAT_KEY = "wxsearch:heartbeat:worker" # worker 健康心跳
     LEASE_LOCK = "wxsearch:task_lock:leases"    # 心跳续租 / stale 回收串行锁
     LEASE_MEMBER_PREFIX = "v2|"
+    CLAIM_PROTOCOL_FLOORS_ENV = "CLAIM_PROTOCOL_FLOORS"
     PG_LOCK_TIMEOUT_MS = 2_000
     PG_STATEMENT_TIMEOUT_MS = 5_000
     STALE_RECOVERY_BATCH_LIMIT = 20
@@ -119,6 +120,52 @@ class DistributedTaskScheduler:
             if len(parts) == 2:
                 return unquote(parts[0]), unquote(parts[1]), True
         return None, text, False
+
+    @classmethod
+    def _configured_claim_protocol_floors(cls) -> Dict[str, int]:
+        """解析不可变发布配置中的单设备领词协议下限。
+
+        格式：``vm-a:2,vm-b:3``。v3 是部署排空态（当前 v1/v2
+        请求均被拒绝）。任何配置错误均由调用方 fail closed。
+        """
+        raw = os.getenv(cls.CLAIM_PROTOCOL_FLOORS_ENV, "").strip()
+        if not raw:
+            return {}
+        floors: Dict[str, int] = {}
+        for item in raw.split(","):
+            item = item.strip()
+            if not item or ":" not in item:
+                raise ValueError(f"无效的领词协议门禁项：{item!r}")
+            vm_instance_id, value = item.rsplit(":", 1)
+            vm_instance_id = vm_instance_id.strip()
+            if not vm_instance_id or vm_instance_id in floors:
+                raise ValueError(f"重复或空的门禁设备 ID：{vm_instance_id!r}")
+            minimum = int(value.strip())
+            if minimum not in (1, 2, 3):
+                raise ValueError(f"不支持的领词协议下限：{minimum}")
+            floors[vm_instance_id] = minimum
+        return floors
+
+    @classmethod
+    def _claim_protocol_allowed(
+        cls, vm_instance_id: str, requested_protocol: int
+    ) -> bool:
+        try:
+            minimum = cls._configured_claim_protocol_floors().get(
+                vm_instance_id, 1
+            )
+        except (TypeError, ValueError) as exc:
+            log.error("领词协议门禁配置非法，已全部拒绝：%s", exc)
+            return False
+        if requested_protocol < minimum:
+            log.info(
+                "设备 %s 的协议 v%s 领取被最低 v%s 门禁拒绝",
+                vm_instance_id,
+                requested_protocol,
+                minimum,
+            )
+            return False
+        return True
 
     def _lease_record(self, member: str):
         channel, keyword, is_v2 = self._decode_lease_member(member)
@@ -305,6 +352,9 @@ class DistributedTaskScheduler:
 
         # 先按渠道串行，再进入全局租约锁；所有生命周期路径均遵循此顺序。
         with self.redis.lock(lock_key, timeout=300, blocking_timeout=10):
+            requested_protocol = 2 if lease_aware else 1
+            if not self._claim_protocol_allowed(vm_instance_id, requested_protocol):
+                return []
             with self.redis.lock(self.LEASE_LOCK, timeout=60, blocking_timeout=10):
                 # 必须在锁内重查；锁外查询会让等待锁的第二个调用使用过期列表。
                 claim_limit = min(50, max(1, int(max_keywords)))
@@ -967,6 +1017,58 @@ class DistributedTaskScheduler:
         return released
 
     # ==================== 设备注册 / 心跳 / 采集历史 ====================
+
+    def device_drain_status(self, device_id: str, channel: str) -> Dict:
+        """返回单设备是否已在关键词边界排空，不暴露关键词内容。
+
+        Redis owner 与 ``devices.current_keyword`` 均为空才视为安全。
+        owner 按设备跨渠道统计，并校验设备登记渠道，避免只在
+        单个 channel 上建立错误边界。缺少心跳行也不能证明安全。
+        """
+        if not device_id or not channel:
+            return {
+                "drained": False,
+                "owned_claims": 0,
+                "current_keyword_active": True,
+                "channel_match": False,
+                "protocol_floor": -1,
+            }
+        try:
+            protocol_floor = self._configured_claim_protocol_floors().get(
+                device_id, 1
+            )
+        except (TypeError, ValueError):
+            protocol_floor = -1
+        with self.redis.lock(self.LEASE_LOCK, timeout=60, blocking_timeout=10):
+            owned = 0
+            for member in self.redis.smembers(self.CLAIMED_SET):
+                record = self._lease_record(member)
+                if record["data"].get("claimer") == device_id:
+                    owned += 1
+            rows = self._execute_query_with_timeouts(
+                self._db(),
+                """
+                SELECT current_keyword, channel
+                FROM devices
+                WHERE device_id = %s
+                """,
+                (device_id,),
+            )
+            row_exists = bool(rows)
+            current_active = not row_exists or bool(rows[0][0])
+            channel_match = row_exists and rows[0][1] == channel
+            return {
+                "drained": (
+                    protocol_floor >= 3
+                    and owned == 0
+                    and not current_active
+                    and channel_match
+                ),
+                "owned_claims": owned,
+                "current_keyword_active": current_active,
+                "channel_match": channel_match,
+                "protocol_floor": protocol_floor,
+            }
 
     def heartbeat_device(self, device_id: str, device_type: str = "pc",
                          channel: str = "souyisou", current_keyword: str = None,

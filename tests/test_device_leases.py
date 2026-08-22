@@ -4,6 +4,7 @@ import sys
 import types
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 try:
     import redis  # noqa: F401
@@ -179,6 +180,66 @@ class DeviceLeaseTests(unittest.TestCase):
             sched._lease_member("wechat_pc", "legacy-keyword"),
             sched.redis.smembers(sched.CLAIMED_SET),
         )
+
+    def test_protocol_floor_rejects_late_legacy_claim_but_allows_v2(self):
+        sched, _ = _scheduler()
+        available_calls = []
+        sched._channel_has_state = lambda channel: True
+        sched._get_available_keywords = (
+            lambda channel, limit: available_calls.append((channel, limit))
+            or ["v2-only"]
+        )
+
+        with patch.dict("os.environ", {"CLAIM_PROTOCOL_FLOORS": "vm-canary:2"}):
+            self.assertEqual(
+                sched.claim_task(
+                    "wechat_pc", "vm-canary", 1, lease_aware=False
+                ),
+                [],
+            )
+            self.assertFalse(available_calls)
+            claimed = sched.claim_task(
+                "wechat_pc", "vm-canary", 1, lease_aware=True
+            )
+        self.assertEqual(claimed[0]["keyword"], "v2-only")
+
+    def test_protocol_floor_three_drains_v1_and_v2_for_one_device(self):
+        sched, _ = _scheduler()
+        sched._channel_has_state = lambda channel: True
+        sched._get_available_keywords = lambda channel, limit: ["blocked"]
+
+        with patch.dict("os.environ", {"CLAIM_PROTOCOL_FLOORS": "vm-canary:3"}):
+            self.assertEqual(
+                sched.claim_task(
+                    "wechat_pc", "vm-canary", 1, lease_aware=False
+                ),
+                [],
+            )
+            self.assertEqual(
+                sched.claim_task(
+                    "sogou", "vm-canary", 1, lease_aware=True
+                ),
+                [],
+            )
+            self.assertEqual(
+                sched.claim_task(
+                    "wechat_pc", "vm-other", 1, lease_aware=False
+                ),
+                ["blocked"],
+            )
+
+    def test_invalid_protocol_floor_fails_closed_for_all_devices(self):
+        sched, _ = _scheduler()
+        sched._channel_has_state = lambda channel: True
+        sched._get_available_keywords = lambda channel, limit: ["unsafe"]
+
+        with patch.dict("os.environ", {"CLAIM_PROTOCOL_FLOORS": "invalid"}):
+            self.assertEqual(
+                sched.claim_task(
+                    "wechat_pc", "vm-other", 1, lease_aware=True
+                ),
+                [],
+            )
 
     def test_same_keyword_has_independent_channel_lease_keys(self):
         sched, _ = _scheduler()
@@ -441,6 +502,39 @@ class DeviceLeaseTests(unittest.TestCase):
         released = sched.force_release_all("vm-force")
 
         self.assertEqual(len(released), sched.STALE_REDIS_BATCH_LIMIT)
+
+    def test_device_drain_status_requires_owner_and_heartbeat_boundary(self):
+        sched, db = _scheduler(fake_db=_Db(query_rows=[(None, "wechat_pc")]))
+        with patch.dict("os.environ", {"CLAIM_PROTOCOL_FLOORS": "vm-a:3"}):
+            self.assertTrue(
+                sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+            )
+
+            _seed_claim(sched, "busy", "vm-a", channel="wechat_pc")
+            self.assertFalse(
+                sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+            )
+
+            sched.redis = _Redis()
+            db.query_rows = [("still-collecting", "wechat_pc")]
+            self.assertFalse(
+                sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+            )
+
+            db.query_rows = []
+            self.assertFalse(
+                sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+            )
+
+            db.query_rows = [(None, "sogou")]
+            self.assertFalse(
+                sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+            )
+
+        db.query_rows = [(None, "wechat_pc")]
+        self.assertFalse(
+            sched.device_drain_status("vm-a", "wechat_pc")["drained"]
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+services:
+  celery-worker:
+    environment:
+      # Phase A: win10-01 旧 v1 与候选 v2 都不得领新词。
+      # 保持到旧租约与 devices.current_keyword 同时排空。
+      CLAIM_PROTOCOL_FLOORS: "win10-01:3"

@@ -8,6 +8,7 @@ import os
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 
@@ -187,6 +188,60 @@ class RealLeaseIntegrationTests(unittest.TestCase):
         self.assertTrue(self.sched.report_result(
             "同一关键词", 1, True, device_id="vm-old", channel="wechat_pc",
         ))
+
+    def test_immutable_protocol_floor_fences_late_legacy_claim(self):
+        with patch.dict(
+            "os.environ", {"CLAIM_PROTOCOL_FLOORS": "vm-canary:2"}
+        ):
+            self.assertEqual(
+                self.sched.claim_task(
+                    "wechat_pc", "vm-canary", 1, lease_aware=False
+                ),
+                [],
+            )
+            self.assertEqual(self._state("wechat_pc"), ("pending", None))
+            self.assertEqual(self.redis.scard(self.sched.CLAIMED_SET), 0)
+            self.assertFalse(
+                self.redis.hgetall(f"{self.sched.KW_PREFIX}同一关键词")
+            )
+            self.assertFalse(
+                self.redis.hgetall(
+                    self.sched._lease_key("wechat_pc", "同一关键词")
+                )
+            )
+            claim = self.sched.claim_task(
+                "wechat_pc", "vm-canary", 1, lease_aware=True
+            )[0]
+        self.assertTrue(claim["lease_id"])
+        self.assertEqual(self.redis.scard(self.sched.CLAIMED_SET), 1)
+        self.assertTrue(
+            self.redis.sismember(
+                self.sched.CLAIMED_SET,
+                self.sched._lease_member("wechat_pc", "同一关键词"),
+            )
+        )
+        self.assertEqual(self._state("wechat_pc"), ("running", "vm-canary"))
+
+    def test_drain_status_counts_same_owner_across_channels(self):
+        self.sched.claim_task(
+            "sogou", "vm-drain", 1, lease_aware=True
+        )
+        self.assertTrue(
+            self.sched.heartbeat_device(
+                "vm-drain", channel="wechat_pc", current_keyword=None,
+                active_keywords=[],
+            )
+        )
+        with patch.dict(
+            "os.environ", {"CLAIM_PROTOCOL_FLOORS": "vm-drain:3"}
+        ):
+            status = self.sched.device_drain_status(
+                "vm-drain", "wechat_pc"
+            )
+        self.assertFalse(status["drained"])
+        self.assertEqual(status["owned_claims"], 1)
+        self.assertFalse(status["current_keyword_active"])
+        self.assertTrue(status["channel_match"])
 
     def test_result_transaction_is_idempotent_and_stats_increment_once(self):
         claim = self.sched.claim_task(

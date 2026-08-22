@@ -527,6 +527,26 @@ def heartbeat_device_task(device_id: str, device_type: str = "pc",
 
 
 @celery_app.task
+def device_drain_status_task(device_id: str, channel: str = "souyisou"):
+    """受控灰度使用的设备排空探针；只返回布尔态与数量。"""
+    try:
+        from wxsearch.task_scheduler import DistributedTaskScheduler
+        return DistributedTaskScheduler.from_env().device_drain_status(
+            device_id=device_id,
+            channel=channel,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.error(f"❌ 设备排空探针异常（{device_id}/{channel}）：{e}")
+        return {
+            "drained": False,
+            "owned_claims": -1,
+            "current_keyword_active": True,
+            "channel_match": False,
+            "protocol_floor": -1,
+        }
+
+
+@celery_app.task
 def device_monitor_task():
     """设备级监控（beat 每 60s）：
 

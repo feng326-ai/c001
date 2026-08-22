@@ -1,0 +1,6 @@
+services:
+  celery-worker:
+    environment:
+      # Phase B: 候选进程、心跳与文件校验通过后只放行 v2。
+      # 持久保留，使任何迟到的旧 v1 Celery 消息永久返回空。
+      CLAIM_PROTOCOL_FLOORS: "win10-01:2"
