@@ -1,5 +1,8 @@
 version: '3.8'
 
+x-runtime-database: &runtime-database
+  DATABASE_URL: postgresql://${APP_DATABASE_USER:?APP_DATABASE_USER_required}:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}@postgres/wx_search
+
 # 服务端部署版（测试/生产均不在 Compose 内提供入口代理）：
 # - 去掉 nginx(80) / adminer(8080)；测试入口走 SSH 反向隧道，生产入口由宿主机负责
 # - backend 去掉 --reload
@@ -47,13 +50,42 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    profiles: ["admin"]
+    image: xiansuo-app:latest
+    command: python -m wxsearch.migrations.run
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    restart: "no"
+
+  provision-runtime-role:
+    profiles: ["admin"]
+    image: xiansuo-app:latest
+    command: python -m wxsearch.runtime_db_role provision
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      DATABASE_URL: postgresql://${APP_DATABASE_USER:?APP_DATABASE_USER_required}:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}@postgres/wx_search
+      APP_DATABASE_USER: ${APP_DATABASE_USER:?APP_DATABASE_USER_required}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    restart: "no"
+
   celery-worker:
     image: xiansuo-app:latest
     container_name: wxsearch_worker
     restart: always
     command: celery -A wxsearch.tasks worker -l info -c 4
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-8}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
@@ -109,7 +141,7 @@ services:
     restart: always
     command: celery -A wxsearch.tasks beat -l info
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-4}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
@@ -135,7 +167,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-8}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}

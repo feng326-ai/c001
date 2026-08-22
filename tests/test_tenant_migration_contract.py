@@ -6,6 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "docs" / "migrations" / "021_tenant_identity_rls.sql"
+MEMBERSHIP_DISCOVERY_MIGRATION = (
+    ROOT / "docs" / "migrations" / "022_tenant_membership_discovery.sql"
+)
 BASELINE = ROOT / "docs" / "migrations" / "checksum_baseline.json"
 
 
@@ -15,6 +18,14 @@ def _sql() -> str:
 
 def _normalized_sql() -> str:
     return re.sub(r"\s+", " ", _sql()).strip().lower()
+
+
+def _discovery_sql() -> str:
+    return MEMBERSHIP_DISCOVERY_MIGRATION.read_text(encoding="utf-8-sig")
+
+
+def _normalized_discovery_sql() -> str:
+    return re.sub(r"\s+", " ", _discovery_sql()).strip().lower()
 
 
 def test_users_gain_stable_public_identity_without_replacing_legacy_id():
@@ -148,5 +159,45 @@ def test_021_baseline_is_sha256_only_and_keeps_legacy_cutoff_frozen():
 
     assert payload["legacy_md5_through"] == "020"
     assert payload["migrations"]["021"] == {
+        "sha256": hashlib.sha256(canonical).hexdigest()
+    }
+
+
+def test_022_membership_discovery_is_narrow_and_security_hardened():
+    sql = _normalized_discovery_sql()
+
+    assert "create or replace function public.app_list_active_tenants" in sql
+    assert "security definer" in sql
+    assert "set search_path = pg_catalog" in sql
+    assert "from public.users as u" in sql
+    assert "join public.tenant_memberships as tm" in sql
+    assert "join public.tenants as t" in sql
+    assert "u.enabled = true" in sql
+    assert "tm.status = 'active'" in sql
+    assert "t.status = 'active'" in sql
+    assert (
+        "revoke all on function public.app_list_active_tenants(uuid) from public"
+        in sql
+    )
+    assert "rolsuper or rolbypassrls" in sql
+
+    assert not re.search(r"\bgrant\b", sql)
+    assert not re.search(r"\b(create|alter)\s+role\b", sql)
+    assert not re.search(r"create\s+table\b", sql)
+    assert "create policy" not in sql
+    assert "set_config(" not in sql
+
+
+def test_022_baseline_is_sha256_only_and_keeps_legacy_cutoff_frozen():
+    payload = json.loads(BASELINE.read_text(encoding="utf-8"))
+    canonical = (
+        _discovery_sql()
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .encode("utf-8")
+    )
+
+    assert payload["legacy_md5_through"] == "020"
+    assert payload["migrations"]["022"] == {
         "sha256": hashlib.sha256(canonical).hexdigest()
     }

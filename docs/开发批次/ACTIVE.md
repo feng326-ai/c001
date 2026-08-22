@@ -1,6 +1,6 @@
 # 当前开发批次与文件租约
 
-> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前 021 仅在代码与隔离 QA 中开发验收，尚未部署或启用租户业务功能。
+> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前 021/022 及运行时安全入口仅在代码与隔离 QA 中完成验收，尚未部署或启用租户业务功能。
 
 ## 活动任务
 
@@ -15,16 +15,17 @@
 | `SEC-CREDENTIAL-BOUNDARY-001` | 集成负责人 `/root`（安全只读审查：协作智能体） | 共享工作区 / `main` | `wxsearch/api/main.py`<br>`wxsearch/templates/system_settings.html`<br>`wxsearch/ai_filters/llm_client.py`<br>`wxsearch/sogou_loop.py`<br>`start_sogou_loop.bat`<br>`tests/test_security_boundaries.py`<br>`.gitignore`<br>`.dockerignore`<br>`config.json`（仅停止跟踪，保留本机文件）<br>`config.example.json`<br>`wxsearch/config.py`<br>`tests/test_config_contract.py`<br>`README.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | 模型探测只允许 super + POST；自定义端点不得继承服务端密钥；采集日志令牌改请求头；采集节点不要求数据库口令；运行时配置缺失/启用态占位值 fail closed | 已完成 | 路由权限/方法、allowlist、禁止继承服务端 key、原子私有落盘、请求头令牌、无数据库口令节点和安全配置模板均有回归测试；`config.json` 不入 Git/Docker context，缺失配置或启用态缺显式 Redis 端点/唯一 VM 身份时拒绝启动；本批只提交代码，尚未部署、设置现有 Windows ACL 或轮换生产凭据 |
 | `MIGRATION-TENANT-001` | 数据库实现：`/root/domain_migration`；集成负责人 `/root` | 共享工作区 / `main` | `docs/migrations/021_tenant_identity_rls.sql`<br>`docs/migrations/checksum_baseline.json`<br>`docs/migrations/README.md`<br>`tests/test_tenant_migration_contract.py`<br>`tests/test_migration_integrity.py`<br>`docs/租户身份与RLS地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/开发批次/ACTIVE.md` | expand-only：`users.public_id`、`tenants`、`tenant_memberships`、事务租户上下文解析函数、`ENABLE/FORCE RLS`；不建候选/审核/商机，不回填三家公司 | 已完成 | 空库执行 001～021 与历史只读复核通过；legacy cutoff 保持 020；结构/约束/RLS/回滚边界通过独立审查；本迁移保持休眠，不等于运行时租户隔离已上线 |
 | `QA-CONTRACT-002` | QA 实现：`/root/collaboration_quality`；集成负责人 `/root` | 共享工作区 / `main` | `tests/test_tenant_rls_integration.py` | 独立非 superuser DB 角色验证 A 可读写 A、A 不可读写 B、无上下文零行/拒写、事务池复用无上下文残留、伪造业务 tenant 字段不能扩大 RLS | 已完成 | PostgreSQL 15 隔离栈 108 项测试通过；临时角色非 super/非 owner/无 BYPASSRLS；正反向越权、写入、事务重用及清理均通过 |
+| `TENANT-RUNTIME-ROLE-001` | 数据库发布实现：`/root/domain_migration`；Compose/集成：`/root` | 共享工作区 / `main` | `wxsearch/runtime_db_role.py`<br>`wxsearch/migrations/run.py`<br>`tools/check_secrets.py`<br>`tests/test_runtime_db_role.py`<br>`tests/test_runtime_db_role_integration.py`<br>`tests/test_runtime_compose_contract.py`<br>`tests/test_secret_scan.py`<br>`.env.example`<br>`.env.staging.example`<br>`docker-compose.yml`<br>`docker-compose.prod.yml`<br>`docker-compose.staging.yml`<br>`docker-compose.qa.yml`<br>`docs/环境拆分与发布手册.md`<br>`docs/租户运行时安全地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | 迁移 owner 与应用运行 LOGIN 分离；真实角色名/密码仅由环境注入；运行角色非 super、无 BYPASSRLS、非表 owner、无 schema CREATE 和迁移 ledger 写权限 | 已完成 | 四份 Compose 契约、参数化 provision/check 和真实运行 LOGIN 权限矩阵均通过；PG15 隔离栈共 151 项测试通过；本批未修改任何已部署数据库角色 |
+| `TENANT-TRANSACTION-AUTH-001` | 事务实现：`/root`；QA 实现：`/root/collaboration_quality`；架构只读审查：`/root/target_architecture` | 共享工作区 / `main` | `wxsearch/db_connector.py`<br>`docs/migrations/022_tenant_membership_discovery.sql`<br>`docs/migrations/checksum_baseline.json`<br>`tests/test_tenant_transaction.py`<br>`tests/test_tenant_transaction_integration.py`<br>`tests/test_tenant_migration_contract.py`<br>`docs/租户身份与RLS地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/开发批次/ACTIVE.md` | 同一物理连接/事务；认证 `users.public_id` + active membership；选租户前只列本人 active memberships；user/tenant GUC 均只作第二道作用域 | 已完成 | commit/rollback/异常/线程并发/池复用不残留，inactive/cross-tenant 拒绝且窄入口不可扩大读写；022 和入口保持未部署、未接线、未回填状态 |
 
 ## 下一批候选（尚未领取、没有写租约）
 
 | 建议任务 ID | 目标 | 前置条件 |
 |---|---|---|
-| `TENANT-RUNTIME-ROLE-001` | 拆分迁移 owner 与 API/worker 运行角色；产出不含真实密码的授权脚本和部署校验，确保运行角色 `NOSUPERUSER/NOBYPASSRLS` 且非租户表 owner | 021 合并；先在隔离/预发布验证；未完成前禁止启用任何租户表读写 |
-| `TENANT-TRANSACTION-AUTH-001` | 实现同物理连接、同事务 `tenant_transaction`；以认证 `users.public_id` 校验 active membership，并提供认证前最小权限成员列举入口 | 运行角色方案冻结；安全审查和连接复用/异常回滚集成测试通过后才能开发租户 endpoint/worker |
 | `ROLLOUT-COLLECT-V2-002` | 按单机灰度流程依次升级 `win10-02/03/04`，每台独立验收和回滚 | `win10-01` 连续观察至少 12～24 小时；无本机 fence、heartbeat、result 错误；逐台确认唯一 MAC / `vm_instance_id` |
 | `QA-SUPPLYCHAIN-002` | Gitleaks 全历史、服务端/Windows 采集依赖锁、pip-audit、Compose 策略和 Trivy 镜像门禁 | 先拆分运行时依赖；对历史命中逐条核实，不用 baseline 掩盖真实凭据 |
 | `CLEANUP-REDIS-SET-003` | 把结果缓存的弃用 `setex` 调用改为 `set(..., ex=...)` 并清除 5 条测试警告 | 不改变 key、TTL 或返回语义；单独小提交 |
+| `TENANT-OWNER-SPLIT-002` | 把当前一次性管理身份进一步拆为 NOLOGIN 对象 owner、迁移执行角色与运行 LOGIN | 先在影子库验证函数 owner、默认权限、迁移回退和运维可恢复性；不得直接改生产 owner |
 
 ## 当前锁与禁止事项
 

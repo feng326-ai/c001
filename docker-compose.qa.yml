@@ -63,6 +63,7 @@ services:
     environment:
       ENVIRONMENT: qa
       DATABASE_URL: postgresql://qa_foundation:${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_lease_qa_ci
+      MIGRATION_DATABASE_URL: postgresql://qa_foundation:${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_lease_qa_ci
       REDIS_URL: redis://:${QA_REDIS_PASSWORD:?QA_REDIS_PASSWORD_required}@redis:6379/15
       RUN_LEASE_INTEGRATION: "1"
       RUN_MIGRATION_INTEGRATION: "1"

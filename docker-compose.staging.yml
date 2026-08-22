@@ -6,9 +6,8 @@ name: xiansuo-staging
 # - 不定义 Celery Beat，默认也不运行 Worker，因此不会领词、清洗或同步；
 # - 应从干净 Git 提交构建带 SHA 的镜像，禁止挂载生产源码目录。
 
-x-app-environment: &staging-app-environment
+x-common-environment: &staging-common-environment
   ENVIRONMENT: staging
-  DATABASE_URL: postgresql://staging_admin:${STAGING_POSTGRES_PASSWORD:?STAGING_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_staging
   REDIS_URL: redis://:${STAGING_REDIS_PASSWORD:?STAGING_REDIS_PASSWORD_required}@redis:6379/0
   DB_POOL_MAX: "4"
   DB_CONNECT_TIMEOUT: "5"
@@ -35,6 +34,14 @@ x-app-environment: &staging-app-environment
   # 留空会让正式同步接收与采集日志接收接口直接返回 503。
   SYNC_SHARED_SECRET: ""
   COLLECT_LOG_TOKEN: ""
+
+x-runtime-environment: &staging-runtime-environment
+  <<: *staging-common-environment
+  DATABASE_URL: postgresql://${STAGING_APP_DATABASE_USER:?STAGING_APP_DATABASE_USER_required}:${STAGING_APP_DATABASE_PASSWORD:?STAGING_APP_DATABASE_PASSWORD_required}@postgres:5432/wx_search_staging
+
+x-migration-environment: &staging-migration-environment
+  ENVIRONMENT: staging
+  MIGRATION_DATABASE_URL: postgresql://staging_admin:${STAGING_POSTGRES_PASSWORD:?STAGING_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_staging
 
 services:
   postgres:
@@ -84,7 +91,7 @@ services:
     command: uvicorn wxsearch.api.main:app --host 0.0.0.0 --port 8000
     ports:
       - "127.0.0.1:${STAGING_BACKEND_PORT:-18000}:8000"
-    environment: *staging-app-environment
+    environment: *staging-runtime-environment
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,8 +116,8 @@ services:
   schema-init:
     profiles: ["admin"]
     image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
-    command: ["sh", "-ec", "psql \"$$DATABASE_URL\" -v ON_ERROR_STOP=1 -f /app/docs/db_schema.sql"]
-    environment: *staging-app-environment
+    command: ["sh", "-ec", "psql \"$$MIGRATION_DATABASE_URL\" -v ON_ERROR_STOP=1 -f /app/docs/db_schema.sql"]
+    environment: *staging-migration-environment
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,7 +129,23 @@ services:
     profiles: ["admin"]
     image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
     command: python -m wxsearch.migrations.run
-    environment: *staging-app-environment
+    environment: *staging-migration-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - staging_net
+    restart: "no"
+
+  provision-runtime-role:
+    profiles: ["admin"]
+    image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
+    command: python -m wxsearch.runtime_db_role provision
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://staging_admin:${STAGING_POSTGRES_PASSWORD:?STAGING_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_staging
+      DATABASE_URL: postgresql://${STAGING_APP_DATABASE_USER:?STAGING_APP_DATABASE_USER_required}:${STAGING_APP_DATABASE_PASSWORD:?STAGING_APP_DATABASE_PASSWORD_required}@postgres:5432/wx_search_staging
+      APP_DATABASE_USER: ${STAGING_APP_DATABASE_USER:?STAGING_APP_DATABASE_USER_required}
+      APP_DATABASE_PASSWORD: ${STAGING_APP_DATABASE_PASSWORD:?STAGING_APP_DATABASE_PASSWORD_required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +159,7 @@ services:
     profiles: ["jobs"]
     image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
     command: celery -A wxsearch.tasks worker -l info -c 1 -Q staging
-    environment: *staging-app-environment
+    environment: *staging-runtime-environment
     depends_on:
       postgres:
         condition: service_healthy

@@ -6,13 +6,71 @@
 import os
 import logging
 import threading
-import psycopg2
-from psycopg2 import InterfaceError, OperationalError, sql
-from typing import Optional, Dict, Any
+from contextlib import contextmanager
+from dataclasses import dataclass
+from psycopg2 import InterfaceError, OperationalError
+from typing import Iterator, Optional
 from urllib.parse import urlsplit
+from uuid import UUID
 
 # 初始化日志
 log = logging.getLogger(__name__)
+
+
+class TenantAccessDenied(PermissionError):
+    """The authenticated legacy user has no active access to the tenant."""
+
+
+class TenantTransactionUsageError(RuntimeError):
+    """A caller attempted to escape or nest a tenant transaction."""
+
+
+@dataclass(frozen=True)
+class TenantPrincipal:
+    user_id: int
+    user_public_id: UUID
+    tenant_id: UUID
+    membership_id: UUID
+    role: str
+
+
+@dataclass(frozen=True)
+class TenantChoice:
+    tenant_id: UUID
+    code: str
+    name: str
+    membership_id: UUID
+    role: str
+
+
+class TenantDbTransaction:
+    """Narrow fixed-connection interface yielded after tenant authorization.
+
+    It intentionally exposes neither the raw connection nor commit/rollback.
+    The owning context manager is the only transaction lifecycle authority.
+    """
+
+    def __init__(self, cursor, principal: TenantPrincipal):
+        self._cursor = cursor
+        self._closed = False
+        self.principal = principal
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise TenantTransactionUsageError("tenant transaction is closed")
+
+    def execute_query(self, query: str, params: Optional[tuple] = None) -> list:
+        self._require_open()
+        self._cursor.execute(query, params)
+        return self._cursor.fetchall()
+
+    def execute_write(self, query: str, params: Optional[tuple] = None) -> int:
+        self._require_open()
+        self._cursor.execute(query, params)
+        return self._cursor.rowcount
+
+    def _close(self) -> None:
+        self._closed = True
 
 
 class DatabaseConnector:
@@ -104,6 +162,7 @@ class DatabaseConnector:
         借出的连接按线程登记，供后续 commit/rollback/close 使用；
         调用方用完必须调 close() 归还连接，否则会泄漏致连接池耗尽。
         """
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = self.pool.getconn()
         self._local.active_conn = conn
         if cursor_factory:
@@ -112,12 +171,14 @@ class DatabaseConnector:
 
     def commit(self):
         """提交当前借出连接的事务。"""
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = getattr(self._local, "active_conn", None)
         if conn is not None:
             conn.commit()
 
     def rollback(self):
         """回滚当前借出连接的事务。"""
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = getattr(self._local, "active_conn", None)
         if conn is not None:
             conn.rollback()
@@ -137,6 +198,185 @@ class DatabaseConnector:
                 self.pool.putconn(conn, close=True)
             except Exception:  # noqa: BLE001
                 pass
+
+    def _reject_autonomous_access_inside_tenant_transaction(self) -> None:
+        if getattr(self._local, "tenant_transaction_active", False):
+            raise TenantTransactionUsageError(
+                "use the TenantDbTransaction methods inside tenant_transaction"
+            )
+
+    @staticmethod
+    def _canonical_uuid(value: UUID | str) -> UUID:
+        if isinstance(value, UUID):
+            return value
+        if not isinstance(value, str):
+            raise TenantAccessDenied("tenant access denied")
+        try:
+            parsed = UUID(value)
+        except (ValueError, AttributeError, TypeError) as error:
+            raise TenantAccessDenied("tenant access denied") from error
+        if str(parsed) != value.lower():
+            raise TenantAccessDenied("tenant access denied")
+        return parsed
+
+    @staticmethod
+    def _authenticated_user_id(value: int) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise TenantAccessDenied("tenant access denied")
+        return value
+
+    @staticmethod
+    def _load_enabled_public_id(cursor, authenticated_user_id: int) -> UUID:
+        cursor.execute(
+            """
+            SELECT public_id
+            FROM users
+            WHERE id = %s AND enabled = TRUE
+            FOR SHARE
+            """,
+            (authenticated_user_id,),
+        )
+        row = cursor.fetchone()
+        if not row or row[0] is None:
+            raise TenantAccessDenied("tenant access denied")
+        try:
+            return UUID(str(row[0]))
+        except (ValueError, TypeError) as error:
+            raise TenantAccessDenied("tenant access denied") from error
+
+    @contextmanager
+    def tenant_transaction(
+        self,
+        *,
+        authenticated_user_id: int,
+        requested_tenant_id: UUID | str,
+    ) -> Iterator[TenantDbTransaction]:
+        """Authorize and execute tenant work on one connection and transaction.
+
+        This synchronous context must stay inside one service call and must not
+        cross an ``await`` boundary. The legacy integer user id comes only from
+        a verified server session; request-supplied public ids are never used.
+        """
+
+        user_id = self._authenticated_user_id(authenticated_user_id)
+        tenant_id = self._canonical_uuid(requested_tenant_id)
+        self._reject_autonomous_access_inside_tenant_transaction()
+
+        conn = cursor = transaction = None
+        broken = False
+        commit_started = False
+        self._local.tenant_transaction_active = True
+        try:
+            conn = self.pool.getconn()
+            if conn.autocommit:
+                conn.autocommit = False
+            cursor = conn.cursor()
+            user_public_id = self._load_enabled_public_id(cursor, user_id)
+            cursor.execute(
+                "SELECT set_config('app.tenant_id', %s, true)",
+                (str(tenant_id),),
+            )
+            cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT tm.id, tm.role
+                FROM tenant_memberships AS tm
+                JOIN tenants AS t ON t.id = tm.tenant_id
+                WHERE tm.tenant_id = %s
+                  AND tm.user_id = %s
+                  AND tm.status = 'active'
+                  AND t.status = 'active'
+                FOR SHARE OF tm, t
+                """,
+                (str(tenant_id), str(user_public_id)),
+            )
+            membership = cursor.fetchone()
+            if not membership:
+                raise TenantAccessDenied("tenant access denied")
+
+            principal = TenantPrincipal(
+                user_id=user_id,
+                user_public_id=user_public_id,
+                tenant_id=tenant_id,
+                membership_id=UUID(str(membership[0])),
+                role=str(membership[1]),
+            )
+            transaction = TenantDbTransaction(cursor, principal)
+            yield transaction
+            transaction._close()
+            commit_started = True
+            conn.commit()
+        except BaseException as error:
+            if transaction is not None:
+                transaction._close()
+            broken = bool(
+                commit_started
+                or isinstance(error, (OperationalError, InterfaceError))
+                or (conn is not None and conn.closed)
+            )
+            if conn is not None and not conn.closed:
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    broken = True
+            raise
+        finally:
+            if transaction is not None:
+                transaction._close()
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:  # noqa: BLE001
+                    broken = True
+            self._local.tenant_transaction_active = False
+            self._release_connection(conn, broken=broken)
+
+    def list_active_tenants(
+        self, *, authenticated_user_id: int
+    ) -> list[TenantChoice]:
+        """List only active memberships for a verified legacy session user."""
+
+        user_id = self._authenticated_user_id(authenticated_user_id)
+        self._reject_autonomous_access_inside_tenant_transaction()
+        conn = cursor = None
+        broken = False
+        try:
+            conn = self.pool.getconn()
+            if conn.autocommit:
+                conn.autocommit = False
+            cursor = conn.cursor()
+            user_public_id = self._load_enabled_public_id(cursor, user_id)
+            cursor.execute(
+                """
+                SELECT tenant_id, tenant_code, tenant_name,
+                       membership_id, membership_role
+                FROM public.app_list_active_tenants(%s)
+                """,
+                (str(user_public_id),),
+            )
+            return [
+                TenantChoice(
+                    tenant_id=UUID(str(row[0])),
+                    code=str(row[1]),
+                    name=str(row[2]),
+                    membership_id=UUID(str(row[3])),
+                    role=str(row[4]),
+                )
+                for row in cursor.fetchall()
+            ]
+        except BaseException as error:
+            broken = bool(
+                isinstance(error, (OperationalError, InterfaceError))
+                or (conn is not None and conn.closed)
+            )
+            raise
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:  # noqa: BLE001
+                    broken = True
+            self._release_connection(conn, broken=broken)
     
     def execute_query(self, query: str, params: Optional[tuple] = None) -> list:
         """
@@ -149,6 +389,7 @@ class DatabaseConnector:
         Returns:
             结果列表
         """
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = cur = None
         broken = False
         try:
@@ -182,6 +423,7 @@ class DatabaseConnector:
         Returns:
             受影响行数
         """
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = cur = None
         broken = False
         try:
@@ -212,6 +454,7 @@ class DatabaseConnector:
         `execute_query` / `execute_write` 自己回收连接；本方法只服务 legacy
         `cursor()` 调用。连接按线程登记，避免并发请求互相归还错误的连接。
         """
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = getattr(self._local, "active_conn", None)
         if conn is not None:
             self._release_connection(conn, broken=bool(conn.closed))
@@ -219,6 +462,7 @@ class DatabaseConnector:
     
     def health_check(self) -> bool:
         """检查数据库连接是否可用"""
+        self._reject_autonomous_access_inside_tenant_transaction()
         conn = None
         try:
             conn = self.pool.getconn()

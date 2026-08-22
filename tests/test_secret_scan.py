@@ -24,11 +24,26 @@ def test_placeholders_and_runtime_expressions_are_allowed(tmp_path: Path):
     candidate.write_text(
         "PASSWORD=replace-with-a-secret\n"
         "TOKEN=${TOKEN}\n"
-        "secret = os.getenv('SERVICE_SECRET')\n",
+        "secret = os.getenv('SERVICE_SECRET')\n"
+        "DATABASE_URL=postgresql://${APP_DATABASE_USER:?user_required}:"
+        "${APP_DATABASE_PASSWORD:?password_required}@postgres/app\n",
         encoding="utf-8",
     )
 
     assert scan_file(candidate) == []
+
+
+def test_literal_url_password_is_still_reported(tmp_path: Path):
+    candidate = tmp_path / "unsafe.yml"
+    candidate.write_text(
+        "DATABASE_URL: postgresql://service_user:"
+        + "actual-value-123@db/app\n",
+        encoding="utf-8",
+    )
+
+    assert [(finding.line, finding.rule) for finding in scan_file(candidate)] == [
+        (1, "URL_CREDENTIAL")
+    ]
 
 
 def test_private_key_and_provider_tokens_are_detected(tmp_path: Path):

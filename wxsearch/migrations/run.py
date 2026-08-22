@@ -10,6 +10,7 @@ SHA-256.
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -36,8 +37,12 @@ class MigrationIntegrityError(RuntimeError):
 
 
 def get_db_connection():
-    """Connect using the same DATABASE_URL contract as the application."""
+    """Use the one-shot migration DSN, with legacy fallback for old stacks."""
     import psycopg2
+
+    migration_url = os.getenv("MIGRATION_DATABASE_URL")
+    if migration_url:
+        return psycopg2.connect(migration_url)
 
     from wxsearch.tasks import _db_config
 

@@ -65,7 +65,9 @@ UNQUOTED_ASSIGNMENT = re.compile(
     r"|password|passwd|secret|token|api[_-]?key)\s*[:=]\s*(?P<value>[^#\s]+)"
 )
 URL_CREDENTIAL = re.compile(
-    r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@"
+    r"(?i)\b[a-z][a-z0-9+.-]*://"
+    r"(?:\$\{[^}\r\n]+\}|[^\s/:@]+):"
+    r"(?P<value>(?:\$\{[^}\r\n]+\}|[^\s/@]+))@"
 )
 
 

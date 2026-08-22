@@ -1,5 +1,8 @@
 version: '3.8'
 
+x-runtime-database: &runtime-database
+  DATABASE_URL: postgresql://${APP_DATABASE_USER:?APP_DATABASE_USER_required}:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}@postgres/wx_search
+
 services:
   # =====================================================
   # PostgreSQL 主数据库 (15 版本)
@@ -49,6 +52,42 @@ services:
       retries: 5
 
   # =====================================================
+  # 一次性数据库管理任务（只允许 docker compose --profile admin run --rm）
+  # =====================================================
+  migrate:
+    profiles: ["admin"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m wxsearch.migrations.run
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    restart: "no"
+
+  provision-runtime-role:
+    profiles: ["admin"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m wxsearch.runtime_db_role provision
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      DATABASE_URL: postgresql://${APP_DATABASE_USER:?APP_DATABASE_USER_required}:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}@postgres/wx_search
+      APP_DATABASE_USER: ${APP_DATABASE_USER:?APP_DATABASE_USER_required}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD_required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    restart: "no"
+
+  # =====================================================
   # Celery Worker (AI 处理 worker)
   # =====================================================
   celery-worker:
@@ -59,7 +98,7 @@ services:
     restart: always
     command: celery -A wxsearch.tasks worker -l info -c 4  # 并发 4 个任务
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-8}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
@@ -126,7 +165,7 @@ services:
     restart: always
     command: celery -A wxsearch.tasks beat -l info  # 使用默认 PersistentScheduler
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-4}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
@@ -158,7 +197,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      <<: *runtime-database
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
       DB_POOL_MAX: ${DB_POOL_MAX:-8}
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
