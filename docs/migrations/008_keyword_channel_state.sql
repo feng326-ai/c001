@@ -3,8 +3,8 @@
 -- 版本：v1.0 (幂等)
 -- 用途：让搜一搜(souyisou)与搜狗(sogou)对同一批关键词各自独立按周期循环，
 --       取代 keywords.status 单列的跨渠道耦合。
--- 兼容：调度器在某渠道无 state 行时回退到 keywords.status 旧逻辑；
---       本迁移仅建表，不强制播种，现网采集(channel=wechat_pc)不受影响。
+-- 兼容说明：自租约协议 v2 起，本迁移及实际渠道播种是领取硬前置；
+--           渠道无 state 行时调度器拒绝领取，不再回退 keywords.status。
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS keyword_channel_state (
@@ -30,5 +30,5 @@ DO $$
 BEGIN
     RAISE NOTICE '✅ Migration 008 completed successfully.';
     RAISE NOTICE '  - keyword_channel_state table created (per-(keyword,channel) scheduling)';
-    RAISE NOTICE '  - dormant until seeded; scheduler falls back to keywords.status when a channel has no rows';
+    RAISE NOTICE '  - seed every active channel before enabling scheduler claims';
 END $$;

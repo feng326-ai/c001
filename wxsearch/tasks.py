@@ -117,7 +117,8 @@ celery_app.conf.beat_schedule = {
         "task": "wxsearch.tasks.llm_clean_task",
         "schedule": 60.0,
     },
-    # 设备监控：每 60s 检测离线设备(心跳超时)→置 offline+释放其占用词+告警，并检连续失败。
+    # 设备监控：每 60s 检测离线设备(心跳超时)→置 offline+告警；
+    # 任务由 stale lease recovery 延迟回收，避免无 fencing token 时并发采集。
     "device-monitor": {
         "task": "wxsearch.tasks.device_monitor_task",
         "schedule": 60.0,
@@ -473,12 +474,14 @@ def llm_clean_task():
 # 与其它调度任务同款风格：惰性 import scheduler、异常只 log 不抛、返回 JSON 可序列化结果。
 
 @celery_app.task
-def claim_keywords_task(channel: str, vm_instance_id: str, max_keywords: int = 5):
-    """VM 领取一批可采关键词。返回关键词列表（异常时返回空列表，VM 侧当作“无词”休眠）。"""
+def claim_keywords_task(channel: str, vm_instance_id: str, max_keywords: int = 5,
+                        lease_aware: bool = False):
+    """VM 领取任务；新节点可请求带 lease_id 的 v2 响应，旧节点仍得到字符串列表。"""
     try:
         from wxsearch.task_scheduler import DistributedTaskScheduler
         kws = DistributedTaskScheduler.from_env().claim_task(
-            channel=channel, vm_instance_id=vm_instance_id, max_keywords=max_keywords
+            channel=channel, vm_instance_id=vm_instance_id, max_keywords=max_keywords,
+            lease_aware=lease_aware,
         )
         return list(kws)
     except Exception as e:  # noqa: BLE001
@@ -489,7 +492,7 @@ def claim_keywords_task(channel: str, vm_instance_id: str, max_keywords: int = 5
 @celery_app.task
 def report_result_task(keyword: str, articles_count: int, success: bool,
                        error_message: str = None, device_id: str = None,
-                       channel: str = None):
+                       channel: str = None, lease_id: str = None):
     """VM 上报单个关键词的采集结果。返回 bool（异常时返回 False，不拖垮 VM 循环）。
 
     device_id/channel：设备级归属（写 collect_tasks 历史，支撑每机统计）。
@@ -499,7 +502,7 @@ def report_result_task(keyword: str, articles_count: int, success: bool,
         return bool(DistributedTaskScheduler.from_env().report_result(
             keyword=keyword, articles_count=articles_count,
             success=success, error_message=error_message,
-            device_id=device_id, channel=channel,
+            device_id=device_id, channel=channel, lease_id=lease_id,
         ))
     except Exception as e:  # noqa: BLE001
         log.error(f"❌ 上报结果任务异常（{keyword}）：{e}")
@@ -508,13 +511,15 @@ def report_result_task(keyword: str, articles_count: int, success: bool,
 
 @celery_app.task
 def heartbeat_device_task(device_id: str, device_type: str = "pc",
-                          channel: str = "souyisou", current_keyword: str = None):
-    """VM/设备上报心跳：upsert devices（在线/当前在采词）。返回 bool，异常只 log。"""
+                          channel: str = "souyisou", current_keyword: str = None,
+                          active_keywords=None):
+    """VM/设备上报心跳并续租活跃词。第五参数可选，兼容旧 VM 四参数调用。"""
     try:
         from wxsearch.task_scheduler import DistributedTaskScheduler
         return bool(DistributedTaskScheduler.from_env().heartbeat_device(
             device_id=device_id, device_type=device_type,
             channel=channel, current_keyword=current_keyword,
+            active_keywords=active_keywords,
         ))
     except Exception as e:  # noqa: BLE001
         log.error(f"❌ 设备心跳任务异常（{device_id}）：{e}")
@@ -525,7 +530,7 @@ def heartbeat_device_task(device_id: str, device_type: str = "pc",
 def device_monitor_task():
     """设备级监控（beat 每 60s）：
 
-    1. 离线检测：心跳超时的设备置 offline，并立即释放其占用的关键词（交同渠道其他设备）+ 告警；
+    1. 离线检测：心跳超时的设备置 offline 并告警；关键词等待 stale lease recovery；
     2. 连续失败：某设备 fail_streak 超阈值告警（可能微信掉线/被封）。
     复用 alerting.Alerter（冷却去重 + 可选 webhook）；异常只 log，不拖垫 beat。
     """
@@ -535,20 +540,17 @@ def device_monitor_task():
 
         sched = DistributedTaskScheduler.from_env()
         alerter = Alerter.from_env()
-        timeout = int(os.getenv("DEVICE_ONLINE_TIMEOUT", "180"))
+        timeout = int(os.getenv("DEVICE_ONLINE_TIMEOUT", "600"))
         threshold = int(os.getenv("DEVICE_FAIL_THRESHOLD", "3"))
 
         alerts = []
-        released_total = {}
-
-        # 1. 离线检测 + 掉线自愈（释放占用词）
+        # 1. 离线检测。没有 fencing token 前禁止首次离线立即释放，避免旧执行者
+        # 与新 owner 同时采集；停止心跳后由 recover_stale_claims 延迟回收。
         newly_offline = sched.mark_offline_devices(timeout_seconds=timeout)
         for dev in newly_offline:
-            released = sched.force_release_all(dev)
-            released_total[dev] = len(released)
             alerts.append(Alert(
                 f"device_offline:{dev}", "warning", f"设备离线：{dev}",
-                f"设备 {dev} 心跳超时（>{timeout}s）已置离线，释放其占用关键词 {len(released)} 个（交其他设备采集）。"))
+                f"设备 {dev} 心跳超时（>{timeout}s）已置离线；其关键词将在租约到期后安全回收。"))
 
         # 2. 连续失败告警
         try:
@@ -565,8 +567,8 @@ def device_monitor_task():
 
         sent = alerter.dispatch(alerts) if (alerter.enabled and alerts) else []
         if newly_offline:
-            log.warning(f"[设备监控] 新离线 {len(newly_offline)} 台：{newly_offline}，释放占用：{released_total}")
-        return {"newly_offline": newly_offline, "released": released_total,
+            log.warning(f"[设备监控] 新离线 {len(newly_offline)} 台：{newly_offline}，等待租约到期回收")
+        return {"newly_offline": newly_offline, "released": {},
                 "alerts": [a.key for a in alerts], "sent": sent}
     except Exception as e:  # noqa: BLE001
         log.error(f"❌ 设备监控任务异常：{e}")

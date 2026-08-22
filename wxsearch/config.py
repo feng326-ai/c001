@@ -126,13 +126,21 @@ _DEFAULTS: Dict[str, Any] = {
     # broker/backend 复用 distributed 段，不在此重复配置。
     "unattended": {
         "enabled": False,
-        "channel": "wechat_pc",
+        # 逻辑调度渠道统一为 souyisou；wechat_pc 只描述设备/采集实现，不作队列身份。
+        "channel": "souyisou",
         "vm_instance_id": "vm-01",
         "device_type": "pc",
         "max_keywords": 5,
         "idle_sleep_sec": 60,   # 领不到词时的休眠秒数
         "round_sleep_sec": 30,  # 一批采完后的休眠秒数
         "claim_timeout": 30,    # 调用 claim/report 任务等待结果的超时秒数
+        # 独立心跳必须显著短于服务端 DEVICE_ONLINE_TIMEOUT（现网 600s）。
+        "heartbeat_interval_sec": 60,
+        "heartbeat_result_timeout_sec": 10,
+        # 连续心跳失败达到阈值后，完成已领取批次但暂停领取新批次。
+        "heartbeat_failure_threshold": 3,
+        "report_retry_attempts": 3,
+        "report_retry_backoff_sec": 2,
     },
     "logging": {"level": "INFO", "file": "logs/collector.log"},
 }
@@ -234,13 +242,18 @@ class UnattendedConfig:
     broker/backend 复用 DistributedConfig，不在此重复配置。
     """
     enabled: bool = False
-    channel: str = "wechat_pc"
+    channel: str = "souyisou"
     vm_instance_id: str = "vm-01"
     device_type: str = "pc"
     max_keywords: int = 5
     idle_sleep_sec: int = 60
     round_sleep_sec: int = 30
     claim_timeout: int = 30
+    heartbeat_interval_sec: int = 60
+    heartbeat_result_timeout_sec: int = 10
+    heartbeat_failure_threshold: int = 3
+    report_retry_attempts: int = 3
+    report_retry_backoff_sec: int = 2
 
 
 @dataclass
