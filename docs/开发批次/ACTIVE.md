@@ -7,7 +7,7 @@
 | 任务 ID | 负责人 | 分支/工作区 | 可写路径 | 交界文件/契约 | 状态 | 交接条件 |
 |---|---|---|---|---|---|---|
 | `ARCH-BASELINE-001` | 集成负责人 `/root` | 共享工作区 / `main` | `.env.example`<br>`AGENTS.md`<br>`README.md`<br>`docker-compose.yml`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/对接规范_INTEGRATION.md`<br>`docs/总体架构与演进路线.md`<br>`docs/需求登记.md`<br>`docs/领域模型与渐进迁移方案.md`<br>`docs/多智能体协作与交付规范.md`<br>`docs/开发批次/ACTIVE.md` | D-016～D-020、Integration v2 draft | 已完成 | 设计/QA 交叉审查与文档门禁通过；以本批次提交 SHA 为准 |
-| `ENV-SPLIT-001` | 集成负责人 `/root` | 共享工作区 / `main` | `.dockerignore`<br>`.env.staging.example`<br>`docker-compose.staging.yml`<br>`docs/环境拆分与发布手册.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | D-021、测试/采集运行边界 | 进行中 | 独立测试栈恢复演练、危险开关、隧道和生产采集回归全部通过 |
+| `ENV-SPLIT-001` | 集成负责人 `/root` | 共享工作区 / `main` | `.dockerignore`<br>`.env.staging.example`<br>`docker-compose.staging.yml`<br>`docs/环境拆分与发布手册.md`<br>`docs/环境拆分验收记录_2026-08-22.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | D-021、测试/采集运行边界 | 已完成 | 独立测试栈恢复演练、危险开关、隧道和生产采集回归全部通过；遗留风险已登记 |
 
 ## 下一批候选（尚未领取、没有写租约）
 
