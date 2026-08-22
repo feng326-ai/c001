@@ -1,0 +1,7 @@
+services:
+  celery-worker:
+    volumes:
+      - /home/m/xiansuo/logs:/app/logs
+      - ${COLLECT_RELEASE_DIR:?COLLECT_RELEASE_DIR_required}/wxsearch:/app/wxsearch:ro
+      - ${COLLECT_RELEASE_DIR:?COLLECT_RELEASE_DIR_required}/docs:/app/docs:ro
+      - /home/m/xiansuo/backups:/app/backups
