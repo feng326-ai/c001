@@ -94,3 +94,9 @@ docker exec wxsearch_db pg_dump -U admin wx_search > backup_before_migration.sql
 `023_review_vertical_slice.sql` 追加共享来源/活动届次、租户授权、Candidate、Review、领域 Outbox 与命令幂等账本，并提供审核写事务专用的锁定授权函数。迁移不创建真实租户、成员、授权或 Candidate，也不包含跨租户自动分发身份。
 
 生产启用前必须完成私有 roster、运行角色精确 ACL、原因字典与去向矩阵、受控分发入口、Outbox publisher、备份恢复和单租户 canary。当前 `TENANT_REVIEW_ENABLED=true` 仍由启动门禁拒绝；禁止为测试新表而在已投入使用的生产数据库直接执行 021～023。
+
+## 024 审核规则集的启用边界
+
+`024_review_ruleset.sql` 发布不可变规则版本、结构化完成/重审原因、租户私有 activation 历史、Review 规则快照和可解释评分快照，并向前修复“撤销 Grant 改写已完成审核”的问题。迁移不会为任何真实租户创建 activation，也不会开启审核 API。
+
+规则 activation 只能由受控管理身份逐租户创建或切换；应用运行角色只能读取规则、租户自己的 activation/评分，并精确执行 active-ruleset 锁函数。生产仍须完成 roster、受控分发、商机原子创建、Outbox publisher、预发布和单租户 canary，禁止绕过启动门禁。

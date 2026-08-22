@@ -13,12 +13,16 @@ from pydantic import ValidationError
 
 from wxsearch.api import review_routes
 from wxsearch.db_connector import TenantPrincipal
+from wxsearch.review_rules import (
+    DEFAULT_RULESET_DEFINITION,
+    DEFAULT_RULESET_SHA256,
+    RULESET_VERSION,
+)
 from wxsearch.review_service import (
     ReviewInvalidTransition,
     ReviewPermissionDenied,
     ReviewService,
 )
-
 
 KEY = "qa-command-key-0001"
 
@@ -67,6 +71,15 @@ def _current_user():
     }
 
 
+def _ruleset_row():
+    return (
+        uuid.uuid4(),
+        RULESET_VERSION,
+        DEFAULT_RULESET_SHA256,
+        DEFAULT_RULESET_DEFINITION,
+    )
+
+
 def test_start_review_is_reviewer_only_and_uses_fixed_lock_order():
     candidate_id = uuid.uuid4()
     grant_id = uuid.uuid4()
@@ -76,6 +89,7 @@ def test_start_review_is_reviewer_only_and_uses_fixed_lock_order():
             [("$request_hash", None)],
             [(grant_id,)],
             [(grant_id, edition_id, "policy-v1")],
+            [_ruleset_row()],
             [(candidate_id, edition_id, grant_id, "open", 3)],
             [],
         ]
@@ -92,6 +106,7 @@ def test_start_review_is_reviewer_only_and_uses_fixed_lock_order():
     assert result["candidate_id"] == str(candidate_id)
     assert result["candidate_version"] == 4
     assert result["review_status"] == "in_review"
+    assert result["ruleset_version"] == RULESET_VERSION
     sql = [call[1] for call in transaction.calls]
     grant_lock = next(
         i
@@ -168,12 +183,17 @@ def test_complete_uses_grant_candidate_review_lock_order_and_minimal_event():
                     "in_review",
                     None,
                     2,
+                    uuid.uuid4(),
+                    RULESET_VERSION,
+                    DEFAULT_RULESET_SHA256,
+                    DEFAULT_RULESET_DEFINITION,
                 )
             ],
+            [(datetime.now(timezone.utc),)],
         ]
     )
     # The service must compare against the database principal, never a body user id.
-    transaction.query_results[-1][0] = (
+    transaction.query_results[4][0] = (
         review_id,
         candidate_id,
         edition_id,
@@ -181,6 +201,10 @@ def test_complete_uses_grant_candidate_review_lock_order_and_minimal_event():
         "in_review",
         transaction.principal.user_public_id,
         2,
+        uuid.uuid4(),
+        RULESET_VERSION,
+        DEFAULT_RULESET_SHA256,
+        DEFAULT_RULESET_DEFINITION,
     )
 
     result = ReviewService().complete_review(
@@ -191,8 +215,7 @@ def test_complete_uses_grant_candidate_review_lock_order_and_minimal_event():
         decision="rejected",
         disposition="archive",
         idempotency_key=KEY,
-        reason_code="not_a_fit",
-        reason_schema_version="draft-v1",
+        reason_code="not_selection_or_voting",
         reviewer_note="private note that must not enter the event",
     )
 
@@ -221,24 +244,73 @@ def test_complete_uses_grant_candidate_review_lock_order_and_minimal_event():
     event_payload = json.loads(outbox_call[2][-1])
     assert event_payload["review_id"] == str(review_id)
     assert "reviewer_note" not in event_payload
-    assert "reason_code" not in event_payload
+    assert event_payload["reason_code"] == "not_selection_or_voting"
+    assert event_payload["rule_version"] == RULESET_VERSION
 
 
 def test_sales_handoff_is_rejected_until_opportunity_is_atomic():
-    transaction = ScriptedTransaction()
+    review_id = uuid.uuid4()
+    candidate_id = uuid.uuid4()
+    grant_id = uuid.uuid4()
+    edition_id = uuid.uuid4()
+    transaction = ScriptedTransaction(
+        query_results=[
+            [("$request_hash", None)],
+            [(candidate_id, grant_id)],
+            [(grant_id, edition_id, "policy-v1")],
+            [(candidate_id, edition_id, "in_review", 2)],
+            [
+                (
+                    review_id,
+                    candidate_id,
+                    edition_id,
+                    1,
+                    "in_review",
+                    None,
+                    1,
+                    uuid.uuid4(),
+                    RULESET_VERSION,
+                    DEFAULT_RULESET_SHA256,
+                    DEFAULT_RULESET_DEFINITION,
+                )
+            ],
+            [(datetime.now(timezone.utc),)],
+        ]
+    )
+    transaction.query_results[4][0] = (
+        review_id,
+        candidate_id,
+        edition_id,
+        1,
+        "in_review",
+        transaction.principal.user_public_id,
+        1,
+        uuid.uuid4(),
+        RULESET_VERSION,
+        DEFAULT_RULESET_SHA256,
+        DEFAULT_RULESET_DEFINITION,
+    )
     with pytest.raises(
         ReviewInvalidTransition, match="sales_handoff_not_available"
     ):
         ReviewService().complete_review(
             transaction,
-            review_id=uuid.uuid4(),
+            review_id=review_id,
             expected_review_version=1,
             expected_candidate_version=2,
             decision="qualified",
             disposition="sales_handoff",
             idempotency_key=KEY,
+            reason_code="sales_ready_confirmed",
         )
-    assert transaction.calls == []
+    assert not any(
+        call[0] == "write"
+        and (
+            "update public.tenant_reviews" in call[1]
+            or "insert into public.domain_outbox" in call[1]
+        )
+        for call in transaction.calls
+    )
 
 
 def test_review_payloads_forbid_tenant_identity_and_server_fields():
@@ -247,6 +319,9 @@ def test_review_payloads_forbid_tenant_identity_and_server_fields():
         "reviewer_user_id": uuid.uuid4(),
         "review_status": "completed",
         "completed_at": datetime.now(timezone.utc),
+        "rule_version": RULESET_VERSION,
+        "rule_snapshot": DEFAULT_RULESET_DEFINITION,
+        "priority": "urgent",
     }
     for field, value in forbidden.items():
         with pytest.raises(ValidationError):
@@ -255,6 +330,7 @@ def test_review_payloads_forbid_tenant_identity_and_server_fields():
                 expected_candidate_version=2,
                 decision="rejected",
                 disposition="archive",
+                reason_code="not_selection_or_voting",
                 **{field: value},
             )
 

@@ -15,7 +15,6 @@ from wxsearch.tenant_mapping import (
     validate_manifest_data,
 )
 
-
 RUN = os.getenv("RUN_MIGRATION_INTEGRATION") == "1"
 
 
@@ -150,7 +149,7 @@ def test_pg15_dry_run_keeps_all_mapping_related_content_unchanged():
         before = _database_digest(admin)
         mapping_connection = psycopg2.connect(database_url)
         inventory = inventory_database(mapping_connection)
-        assert inventory["migration_head"] == "023"
+        assert inventory["migration_head"] == "024"
         assert inventory["mapping_ready"] is True
 
         with admin.cursor() as cursor:

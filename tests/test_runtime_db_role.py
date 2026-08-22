@@ -12,7 +12,6 @@ from wxsearch.runtime_db_role import (
     main,
 )
 
-
 MIGRATION_URL = "postgresql://migration-admin:qa-management-secret@db:5432/app"
 RUNTIME_PASSWORD = "qa-runtime-password-0123456789"
 
@@ -185,3 +184,13 @@ def test_permission_contract_keeps_tenant_identity_read_only_and_functions_expli
     assert "runtime tenant write authorization grant is missing" in source
     assert "public.app_lock_active_review_grant(uuid,uuid)" in normalized
     assert "runtime active grant lock function grant is missing" in source
+    assert "public.app_lock_active_review_ruleset(uuid)" in normalized
+    assert "runtime active ruleset lock function grant is missing" in source
+    for table_name in (
+        "review_rulesets",
+        "review_ruleset_completion_reasons",
+        "review_ruleset_reopen_reasons",
+        "tenant_review_ruleset_activations",
+        "tenant_candidate_score_snapshots",
+    ):
+        assert table_name in source

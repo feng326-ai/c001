@@ -13,7 +13,6 @@ from wxsearch.runtime_db_role import (
     provision_runtime_role,
 )
 
-
 RUN = os.getenv("RUN_MIGRATION_INTEGRATION") == "1"
 
 
@@ -242,6 +241,11 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
                 "event_editions",
                 "event_sources",
                 "tenant_resource_grants",
+                "review_rulesets",
+                "review_ruleset_completion_reasons",
+                "review_ruleset_reopen_reasons",
+                "tenant_review_ruleset_activations",
+                "tenant_candidate_score_snapshots",
             )
             for table_name in readonly_tables:
                 cursor.execute(
@@ -278,6 +282,16 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
                 SELECT has_function_privilege(
                            current_user,
                            'public.app_authorize_tenant_write(integer,uuid)',
+                           'EXECUTE'
+                       )
+                """
+            )
+            assert cursor.fetchone() == (True,)
+            cursor.execute(
+                """
+                SELECT has_function_privilege(
+                           current_user,
+                           'public.app_lock_active_review_ruleset(uuid)',
                            'EXECUTE'
                        )
                 """
@@ -332,6 +346,7 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
         assert result["tenant_identity_write_allowed"] is False
         assert result["write_function_available"] is True
         assert result["grant_lock_function_available"] is True
+        assert result["ruleset_lock_function_available"] is True
     finally:
         if runtime is not None:
             runtime.rollback()

@@ -14,10 +14,9 @@ import os
 import re
 import sys
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
-
 
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9_]{2,62}$")
 RESERVED_ROLES = {
@@ -39,6 +38,11 @@ TENANT_CONTROL_READ_ONLY_TABLES = (
     "event_editions",
     "event_sources",
     "tenant_resource_grants",
+    "review_rulesets",
+    "review_ruleset_completion_reasons",
+    "review_ruleset_reopen_reasons",
+    "tenant_review_ruleset_activations",
+    "tenant_candidate_score_snapshots",
 )
 
 TENANT_RUNTIME_TABLE_PRIVILEGES = {
@@ -305,6 +309,17 @@ def _tenant_review_grant_function_state(
         runtime_role,
         "public.app_lock_active_review_grant(uuid,uuid)",
         "app_lock_active_review_grant(uuid,uuid)",
+    )
+
+
+def _tenant_review_ruleset_function_state(
+    cursor, runtime_role: str
+) -> dict[str, object] | None:
+    return _security_definer_function_state(
+        cursor,
+        runtime_role,
+        "public.app_lock_active_review_ruleset(uuid)",
+        "app_lock_active_review_ruleset(uuid)",
     )
 
 
@@ -586,6 +601,28 @@ def provision_runtime_role(
                             "TO {}"
                         ).format(runtime)
                     )
+                cursor.execute(
+                    "SELECT to_regprocedure("
+                    "'public.app_lock_active_review_ruleset(uuid)') "
+                    "IS NOT NULL"
+                )
+                ruleset_lock_function_granted = bool(cursor.fetchone()[0])
+                if ruleset_lock_function_granted:
+                    cursor.execute(
+                        "REVOKE EXECUTE ON FUNCTION "
+                        "public.app_lock_active_review_ruleset(uuid) "
+                        "FROM PUBLIC"
+                    )
+                    _tenant_review_ruleset_function_state(
+                        cursor, settings.app_database_user
+                    )
+                    cursor.execute(
+                        sql.SQL(
+                            "GRANT EXECUTE ON FUNCTION "
+                            "public.app_lock_active_review_ruleset(uuid) "
+                            "TO {}"
+                        ).format(runtime)
+                    )
         checked = check_runtime_role(settings)
         return {
             "status": "provisioned",
@@ -595,6 +632,7 @@ def provision_runtime_role(
             "function_granted": function_granted,
             "write_function_granted": write_function_granted,
             "grant_lock_function_granted": grant_lock_function_granted,
+            "ruleset_lock_function_granted": ruleset_lock_function_granted,
             "verified": True,
         }
     finally:
@@ -704,7 +742,11 @@ def check_runtime_role(
                       'event_editions', 'event_sources',
                       'tenant_resource_grants', 'tenant_candidates',
                       'tenant_reviews', 'tenant_command_receipts',
-                      'domain_outbox'
+                      'domain_outbox', 'review_rulesets',
+                      'review_ruleset_completion_reasons',
+                      'review_ruleset_reopen_reasons',
+                      'tenant_review_ruleset_activations',
+                      'tenant_candidate_score_snapshots'
                   )
                 """
             )
@@ -911,6 +953,23 @@ def check_runtime_role(
                     raise RuntimeRoleError(
                         "runtime active grant lock function grant is missing"
                     )
+            tenant_review_ruleset_function = _tenant_review_ruleset_function_state(
+                cursor, current_user
+            )
+            if tenant_review_ruleset_function is not None:
+                cursor.execute(
+                    """
+                    SELECT has_function_privilege(
+                        current_user,
+                        'public.app_lock_active_review_ruleset(uuid)',
+                        'EXECUTE'
+                    )
+                    """
+                )
+                if not cursor.fetchone()[0]:
+                    raise RuntimeRoleError(
+                        "runtime active ruleset lock function grant is missing"
+                    )
 
             ddl_probe = sql.SQL("CREATE TABLE public.{}(id integer)").format(
                 sql.Identifier(f"runtime_ddl_probe_{uuid.uuid4().hex}")
@@ -930,6 +989,9 @@ def check_runtime_role(
             "write_function_available": tenant_write_function is not None,
             "grant_lock_function_available": (
                 tenant_review_grant_function is not None
+            ),
+            "ruleset_lock_function_available": (
+                tenant_review_ruleset_function is not None
             ),
             "relation_owner": False,
             "ddl_allowed": False,
