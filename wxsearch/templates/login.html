@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 线索管理系统</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#111c31;--panel-2:#18263f;--border:#243549;--text:#e6edf6;--text-2:#9fb0c3;--text-3:#64748b;--brand:#149f90;--brand-hover:#22b8a6;--danger:#ef4444;--radius:12px;}
+    *{box-sizing:border-box;}
+    body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);font-family:-apple-system,"Microsoft YaHei",sans-serif;color:var(--text);}
+    .card{width:360px;max-width:92%;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:32px 28px;box-shadow:0 20px 50px rgba(2,6,23,.6);}
+    .logo{font-size:22px;font-weight:700;text-align:center;margin-bottom:6px;}
+    .sub{text-align:center;color:var(--text-3);font-size:13px;margin-bottom:24px;}
+    label{display:block;font-size:13px;color:var(--text-2);margin:14px 0 6px;}
+    input{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:14px;}
+    input:focus{outline:none;border-color:var(--brand);}
+    .btn{width:100%;margin-top:22px;padding:12px;border:none;border-radius:8px;background:var(--brand);color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
+    .btn:hover{background:var(--brand-hover);}
+    .err{color:#fca5a5;font-size:13px;margin-top:12px;min-height:18px;text-align:center;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🎯 线索管理系统</div>
+    <div class="sub">请登录后使用</div>
+    <label>用户名</label>
+    <input id="username" type="text" autocomplete="username" placeholder="用户名">
+    <label>密码</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="密码" onkeyup="if(event.key==='Enter')doLogin()">
+    <button class="btn" onclick="doLogin()">登 录</button>
+    <div class="err" id="err"></div>
+  </div>
+  <script>
+    async function doLogin(){
+      const username=document.getElementById('username').value.trim();
+      const password=document.getElementById('password').value;
+      const err=document.getElementById('err');
+      err.textContent='';
+      if(!username||!password){err.textContent='请输入用户名和密码';return;}
+      try{
+        const r=await fetch('/api/v1/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+        if(r.ok){location.href='/admin';}
+        else{const d=await r.json().catch(()=>({}));err.textContent=d.detail||'登录失败';}
+      }catch(e){err.textContent='网络错误，请重试';}
+    }
+  </script>
+</body>
+</html>

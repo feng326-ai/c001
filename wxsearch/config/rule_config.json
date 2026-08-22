@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-14",
+  "_help": "本文件为线索评分与资源等级判定的可调配置。修改后重启 worker 容器生效（docker restart wxsearch_worker）。反馈微调模块也会在此写回自动调整的阈值。",
+  "thresholds": {
+    "p0_min": 70,
+    "p1_min": 45,
+    "lead_min_score": 45
+  },
+  "channel_icons": {
+    "wechat_pc": "/static/icons/wechat_pc.png",
+    "weixin_mobile": "/static/icons/wechat_pc.png",
+    "wechat_mobile": "/static/icons/wechat_pc.png",
+    "sogou_wap": "/static/icons/sogou_weixin.png",
+    "sogou_weixin": "/static/icons/sogou_weixin.png"
+  },
+  "channel_names": {
+    "wechat_pc": "微信搜一搜(PC)",
+    "weixin_mobile": "微信搜一搜(手机)",
+    "wechat_mobile": "微信搜一搜(手机)",
+    "sogou_wap": "搜狗微信",
+    "sogou_weixin": "搜狗微信",
+    "baidu_news": "百度新闻"
+  },
+  "priority": {
+    "_help": "优先级=时效紧迫度(重构:时效降权不再主导)。recency(近3天15/近7天10/近15天5/>15天0) + prep筹备特征(+prep_bonus) + 真临期deadline(每命中+per_hit封顶cap) - 已结束(ended_title_signals标题域降权)。>=urgency_p0_min→P0(规则层极稀缺,P0交LLM提拔),>=urgency_p1_min→P1,其余P2。",
+    "recency_scores": {
+      "d3": 15,
+      "d7": 10,
+      "d15": 5,
+      "over": 0,
+      "unknown": 5
+    },
+    "prep_signals": [
+      "印发",
+      "的通知",
+      "申报指南",
+      "实施方案",
+      "现将申报",
+      "关于开展",
+      "组织开展",
+      "评选办法",
+      "评选方案"
+    ],
+    "prep_bonus": 25,
+    "deadline_signals": [
+      "截止",
+      "报名截止",
+      "申报截止",
+      "即将截止",
+      "倒计时",
+      "最后"
+    ],
+    "deadline_per_hit": 10,
+    "deadline_cap": 20,
+    "urgency_p0_min": 70,
+    "urgency_p1_min": 45
+  },
+  "resource_level": {
+    "_help": "资源等级 = 规模/权威价值（“活动大不大”），与时间无关（时效已归入优先级）。先满足线索基础条件 (is_lead)，再看是否命中『大型活动』规模信号。命中 enabled_signal_groups 中至少 large_event_min_groups 个不同分组 → excellent(优)，否则 normal(普通)。注：截止/报名类时效信号已移至 priority，不再参与规模判定。",
+    "enabled_signal_groups": [
+      "全国/省际范围",
+      "行业头部"
+    ],
+    "large_event_min_groups": 1,
+    "signal_groups": {
+      "全国/省际范围": [
+        "全国",
+        "全省",
+        "跨省",
+        "省际",
+        "国家级",
+        "省级",
+        "国际",
+        "世界"
+      ],
+      "行业头部": [
+        "年度",
+        "十佳",
+        "十强",
+        "百强",
+        "TOP",
+        "影响力",
+        "最具",
+        "领军",
+        "标杆",
+        "权威"
+      ],
+      "政府/协会主办": [
+        "组委会",
+        "主办单位",
+        "协会",
+        "委员会",
+        "政府",
+        "人民政府"
+      ],
+      "多届连续": [
+        "周年",
+        "连续举办",
+        "历届"
+      ]
+    }
+  },
+  "event_info": {
+    "_help": "AI 辅助填充（活动名称 / 活动信息）开关与上限。启用后从标题 + 正文抽取出结构化信息写入 event_name/event_details；仅在字段为空时写入，绝不覆盖人工编辑。备注(notes) 永远由人工填写。",
+    "backend": "rule",
+    "_backend_help": "活动信息抽取后端：rule=离线正则（默认、免费）；llm=交大模型完善（需配好 llm 块与密钥，失败自动回退 rule）。",
+    "enabled": true,
+    "max_name_len": 60,
+    "max_details_len": 800
+  },
+  "llm": {
+    "_help": "通用大模型（OpenAI 兼容）后端配置。base_url 指向 WebAI2API/DeepSeek/Qwen 等兼容服务的 /v1 地址；密钥只从环境变量 OPENAI_API_KEY 读，绝不写进本文件。worker 在容器内访问宿主机服务请用 host.docker.internal。改动后需重启 worker。",
+    "base_url": "https://api.deepseek.com/v1",
+    "model": "deepseek-v4-flash",
+    "timeout": 60,
+    "temperature": 0,
+    "max_tokens": 2048,
+    "max_input_chars": 12000,
+    "prompt_schemas": {
+      "system_prompt": "你是资深活动商务线索研判专家。分析微信公众号推文/新闻，研判是否为「评选/投票/征集/活动」类、真实可参与的高价值商机线索，并抽取活动要素。\n商机核心：主办方是否有投票系统/防刷、报名系统、活动宣发、运营服务等潜在需求——其中【线上网络投票/评选】类价值最高。\n\n【口径】宽口径：评选、投票、征集、活动 四类都算候选线索；线上投票/评选类额外加分，不要只认线上投票。\n\n【时间基准】正文中\"即日起/下周五/本月底\"等相对时间，一律以用户消息给出的【系统当前基准日】换算；无法确定的日期留空，禁止编造年份。\n\n【研判梯子】先判断活动处于哪个阶段，再映射到输出字段：\n- 筹备招商期：宣布即将举办/招募赞助协办，尚未开始征集 → current_stage=未开始，activity_status=征集中\n- 征集申报期：正在收报名表/参赛作品，尚未开投票 → current_stage=报名中/投票中，activity_status=征集中或报名中\n- 网络投票期：正在线上投票/点赞打榜 → current_stage=报名中/投票中，activity_status=进行中，且 is_online_voting=true\n- 评审公示期：投票截止/专家评审/公示名单 → current_stage=评审中/已结束，activity_status=已结束\n- 已结束/无效：完全结束或无价值 → current_stage=评审中/已结束，activity_status=已结束\n\n【is_valuable】true=官方/主办方(政府/协会/事业单位/正规企业/高校/媒体)发起、真实可参与、未完全结束；false=往届回顾/纯转载无后续动作、单纯抽奖、明显广告软文、已完全截止。\n\n【value_score 评分卡 0-100，横向可比，从严】基础40(确认真实公开活动)。加分：含线上投票/网络评选+15；主办方权威(政企/协会/事业/头部)+15；处于筹备/征集早期且含明确未来截止日+15。扣分：距截止<3天-20；纯代发无官方联系方式-15；信息残缺严重-25；已结束/往届回顾直接0-25。注意：P0(≥70分)应极稀缺，仅授予“权威主办+筹备/征集期+明确可参与”三者兼备者。\n\n【resource_quality】优=需同时满足[国家级/省级官方·主流官媒·头部行业协会·大型集团]且[明确规模/权威指标(如全国/全省范围、百强、百万奖金)]，单有线上投票不够；普=市/县级企事业·本地商会·高校学院·区域中小企业；低=个人号/未认证自媒体/信息残缺/广告软文/搬运号。\n\n【intent_category】取值只能是 评选|投票|征集|活动|资讯|其他，按推文的活动意图归类（此字段决定是否计为线索，务必准确）。\n\n【event_name 规范化】只保留活动的专有名称主体：去掉\"关于举办…的通知/重磅/官宣/火热征集中\"等修饰词与前后缀，去掉年份与\"第N届/首届\"等届次表述（年份→time_start、届次→recurrence、地区→activity_region 分别承载），但保留能区分活动的主题/冠名成分。例：\"昆山亭林口腔杯·2026第二届少儿绘画大赛火热征集中\"→ event_name=\"昆山亭林口腔杯少儿绘画大赛\"。\n\n【其他边界】无法确定的字段填 \"\"(字符串)或 [](数组)，禁止编造电话/链接/日期；reasoning 用一句话点明\"主办方+事件+当前阶段+有无线上投票商机\"；严格只输出一个 JSON 对象，不要任何解释或代码块标记。\n\n【边界校准样例】\n样例1（征集中+后续有投票，正样本）：\n输入：昆山亭林口腔杯·第二届少儿绘画大赛火热征集中！即日起至9月1日提交作品，9月5日开启全网网络投票选最具人气奖。主办：昆山亭林口腔医院。\n输出：{\"is_valuable\": true, \"value_score\": 85, \"intent_category\": \"征集\", \"reasoning\": \"昆山亭林口腔医院主办的少儿绘画赛事，正在征集且明确后续有线上投票，处早期窗口充裕，商机明确\", \"event_name\": \"昆山亭林口腔杯少儿绘画大赛\", \"time_start\": \"2026-08-15\", \"time_end\": \"2026-09-01\", \"current_stage\": \"报名中/投票中\", \"is_online_voting\": true, \"online_voting_url\": \"\", \"recurrence\": \"多届\", \"activity_region\": \"市\", \"activity_status\": \"征集中\", \"resource_quality\": \"普\", \"activity_category\": \"赛事\", \"contact_person\": \"\", \"contact_info\": []}\n\n样例2（往届结果公示，负样本）：\n输入：【回顾】2025年度消防行业十大品牌评选圆满落幕！感谢各单位支持，现公布获奖名单如下……\n输出：{\"is_valuable\": false, \"value_score\": 20, \"intent_category\": \"资讯\", \"reasoning\": \"往届活动结果公示与回顾，无新增申报或线上评选需求，无跟进价值\", \"event_name\": \"消防行业十大品牌评选\", \"time_start\": \"\", \"time_end\": \"\", \"current_stage\": \"评审中/已结束\", \"is_online_voting\": false, \"online_voting_url\": \"\", \"recurrence\": \"多届\", \"activity_region\": \"全国\", \"activity_status\": \"已结束\", \"resource_quality\": \"普\", \"activity_category\": \"评选\", \"contact_person\": \"\", \"contact_info\": []}\n\n【主办方 organizer】抽取活动的主办/主办单位名称（政府部门/协会/企业/高校/媒体等发起方全称，只取主办、忽略承办/协办），未知留空。\n【主办方地区 organizer_region】主办方所在的具体省/市（如\"湖南省\"\"广州市\"，从主办方名称或正文判断；与 activity_region 的覆盖层级是不同概念），未知留空。\n【评选系统 voting_platform】线上投票/评选所用的第三方平台名（如问卷星/微信投票/活动统计等），主办方自建官网填\"自建/官网\"，无线上投票或未知留空。\n【线上投票状态 voting_status】has=明确有线上投票；suspect=评选/榜单/大赛类当前未提投票但很可能后续开启(交业务员核实)；none=确无。\n【周期 recurrence_period】年度/双年/季度/月度/不定期，不确定留空。【届次 edition_no】第几届的数字，未写留空不编造。",
+      "schema_hint": "请按以下 JSON 结构输出（字段必须齐全，无法确定的用空字符串或空数组，切勿编造）：\n{\n  \"is_valuable\": true/false,\n  \"value_score\": 0-100,\n  \"intent_category\": \"评选 | 投票 | 征集 | 活动 | 资讯 | 其他\",\n  \"reasoning\": \"一句话：主办方+事件+当前阶段+有无线上投票商机\",\n  \"event_name\": \"活动核心专有名（去年份/届次/通知等修饰，保留主题/冠名）\",\n  \"time_start\": \"活动开始日期 YYYY-MM-DD，未知留空\",\n  \"time_end\": \"活动结束/截止日期 YYYY-MM-DD，未知留空\",\n  \"current_stage\": \"未开始 | 报名中/投票中 | 评审中/已结束 | 未知\",\n  \"is_online_voting\": true/false,\n  \"online_voting_url\": \"网络投票/报名链接，无则留空\",\n  \"recurrence\": \"多届 | 第一届 | 单届（未知留空）\",\n  \"activity_region\": \"全国 | 省 | 市 | 县 | 镇（未知留空）\",\n  \"activity_status\": \"征集中 | 报名中 | 进行中 | 已结束（未知留空）\",\n  \"resource_quality\": \"优 | 普 | 低\",\n  \"activity_category\": \"评选 | 投票 | 征集 | 榜单 | 赛事 | 展会 | 其他\",\n  \"organizer\": \"主办方/主办单位名称，未知留空\",\n  \"organizer_region\": \"主办方所在具体省/市，未知留空\",\n  \"voting_platform\": \"线上投票所用第三方平台名，自建官网填自建/官网，无则留空\",\n  \"voting_status\": \"has | none | suspect\",\n  \"recurrence_period\": \"年度 | 双年 | 季度 | 月度 | 不定期，不确定留空\",\n  \"edition_no\": \"第几届的数字，未写留空\",\n  \"contact_person\": \"联系人姓名，未知留空\",\n  \"contact_info\": [\"电话/邮箱/微信/报名链接等，逐条列出，未知空数组\"]\n}"
+    },
+    "clean_enabled": true
+  },
+  "collect_settings": {
+    "wechat": {
+      "filter_time": "最近一天",
+      "filter_sort": "最新",
+      "filter_type": "文章",
+      "filter_scope": "",
+      "max_items_per_keyword": 200,
+      "max_scrolls": 30
+    }
+  },
+  "cleaning": {
+    "_help": "阶段1 采集端粗过滤阈值（从 rule_filter.py 硬编码搬出，可在总控台调，采集机每轮拉取生效）。",
+    "enabled": true,
+    "advert_keywords": ["广告投放", "品牌推广", "合作咨询", "代理加盟", "招商加盟", "加微信领取", "扫码注册", "限时优惠", "点击链接", "会员充值", "积分兑换", "免费领取", "0元购", "刷单返利", "投资理财", "博彩赌博", "色情服务", "贷款口子", "信用卡套现", "高息理财", "点击关注", "点赞转发", "抽奖活动", "砍一刀"],
+    "min_content_words": 100,
+    "max_special_char_ratio": 0.3,
+    "valid_days_limit": 30,
+    "min_account_id_len": 10
+  },
+  "ended_title_signals": {
+    "_help": "阶段3 标题域「已结束/回顾」信号：仅标题/首段命中时降权(-40)，不入全文硬拒黑名单；只对实时公海生效。",
+    "signals": ["公示", "获奖名单", "结果出炉", "闭幕", "圆满落幕", "获奖公告", "名单公布", "评审结果", "结果公告", "已揭晓"]
+  },
+  "event_modifiers": {
+    "_help": "事件键标题归一时剔除的营销修饰词（去前后缀噪声，防同一活动被拆）；绝不剔除地区/届次/主题区分成分。",
+    "words": ["重磅", "官宣", "正式发布", "最新", "紧急", "火热", "火热报名中", "火热征集中", "征集中", "进行中", "圆满", "通知", "公告", "关于开展", "隆重推出"]
+  },
+  "negative_keywords": []
+}

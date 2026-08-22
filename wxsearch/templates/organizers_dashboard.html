@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>主办方库 - 线索管理系统</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#111c31;--panel-2:#18263f;--border:#243549;--text:#e6edf6;--text-2:#9fb0c3;--text-3:#64748b;--brand:#149f90;--brand-hover:#22b8a6;--danger:#ef4444;--radius:12px;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:15px;display:flex;}
+    h1,h2,h3,.sidebar-header{font-family:"Sora","Noto Sans SC","Microsoft YaHei",sans-serif;}
+    .sidebar{width:240px;flex-shrink:0;min-height:100vh;background:var(--panel);border-right:1px solid var(--border);}
+    .sidebar-header{padding:20px;font-size:18px;font-weight:600;border-bottom:1px solid var(--border);}
+    .sidebar-menu{list-style:none;padding:20px 0;margin:0;}
+    .sidebar-menu li{padding:12px 20px;cursor:pointer;color:var(--text-2);border-left:3px solid transparent;}
+    .sidebar-menu li:hover{background:var(--panel-2);color:var(--text);}
+    .sidebar-menu li.active{background:rgba(20,159,144,.15);border-left-color:var(--brand);color:var(--brand-hover);}
+    .sidebar-menu a{text-decoration:none;}
+    .main{flex:1;padding:30px;min-width:0;}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;background:var(--panel);padding:20px 30px;border:1px solid var(--border);border-radius:var(--radius);}
+    h1{font-size:24px;margin:0;}
+    .userbox{color:var(--text-2);font-size:14px;}
+    .userbox a{color:var(--brand-hover);margin-left:12px;text-decoration:none;}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+    table{width:100%;border-collapse:collapse;margin-top:12px;}
+    th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:14px;vertical-align:top;}
+    th{color:var(--text-2);white-space:nowrap;}
+    td{color:var(--text-2);}
+    .btn{padding:7px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;}
+    .btn-primary{background:var(--brand);color:#fff;}
+    .btn-secondary{background:var(--panel-2);color:var(--text-2);border:1px solid var(--border);}
+    .btn-sm{padding:4px 10px;font-size:12px;}
+    input,select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:14px;}
+    .name{color:var(--text);font-weight:600;}
+    .cnt{color:var(--brand-hover);font-weight:700;font-size:15px;}
+    .tag{display:inline-block;padding:2px 8px;margin:1px 3px 1px 0;border-radius:6px;font-size:12px;background:rgba(20,159,144,.12);color:#7fd8cc;}
+    .muted{color:var(--text-3);font-size:12px;}
+    .pager{display:flex;gap:10px;align-items:center;margin-top:16px;color:var(--text-2);font-size:13px;}
+    /* 抽屉 */
+    .drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:50;}
+    .drawer{position:fixed;top:0;right:0;width:560px;max-width:92vw;height:100vh;background:var(--panel);border-left:1px solid var(--border);
+            box-shadow:-8px 0 30px rgba(0,0,0,.4);padding:24px;overflow-y:auto;transform:translateX(100%);transition:transform .2s;z-index:51;}
+    .drawer.open{transform:translateX(0);}
+    .drawer h2{margin:0 0 4px;font-size:20px;color:var(--text);}
+    .kv{margin:6px 0;font-size:14px;}
+    .kv b{color:var(--text-2);font-weight:500;display:inline-block;min-width:74px;}
+    .act{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;background:var(--panel-2);}
+    .act a{color:var(--brand-hover);text-decoration:none;}
+    .close-x{float:right;cursor:pointer;color:var(--text-3);font-size:22px;line-height:1;}
+    .empty{color:var(--text-3);text-align:center;padding:40px 0;}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu"></ul>
+  </div>
+  <div class="main">
+    <div class="header">
+      <h1>主办方库</h1>
+      <div class="userbox"><span id="userBox"></span><a href="/logout">退出</a></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <input id="q" placeholder="搜索主办方 / 别名 / 地区" style="min-width:240px;" onkeydown="if(event.key==='Enter')reload()">
+        <input id="region" placeholder="地区精确筛选(如 湖南省)" style="width:180px;">
+        <select id="sort">
+          <option value="event_count">按举办次数</option>
+          <option value="last_activity_at">按最近活动</option>
+          <option value="canonical_name">按名称</option>
+        </select>
+        <button class="btn btn-primary" onclick="reload()">查询</button>
+        <button class="btn btn-secondary" onclick="doExport()">导出CSV</button>
+        <button class="btn btn-secondary" id="rebuildBtn" style="display:none;" onclick="doRebuild()">重建主办方库</button>
+      </div>
+      <div id="msg" class="muted" style="margin-top:10px;min-height:16px;"></div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>主办方</th><th>地区</th><th>举办次数</th><th>评选系统</th>
+          <th>联系方式</th><th>最近活动</th><th>操作</th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+      <div id="empty" class="empty" style="display:none;">暂无主办方数据。存量线索完成 LLM 清洗回填后，点「重建主办方库」即可生成档案。</div>
+      <div class="pager">
+        <button class="btn btn-secondary btn-sm" onclick="prevPage()">上一页</button>
+        <span id="pageInfo">-</span>
+        <button class="btn btn-secondary btn-sm" onclick="nextPage()">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div class="drawer-mask" id="mask" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <span class="close-x" onclick="closeDrawer()">×</span>
+    <h2 id="dName">-</h2>
+    <div class="muted" id="dAlias"></div>
+    <div style="margin-top:14px;">
+      <div class="kv"><b>地区</b><span id="dRegion">-</span></div>
+      <div class="kv"><b>举办次数</b><span id="dCount">-</span></div>
+      <div class="kv"><b>评选系统</b><span id="dPlatforms">-</span></div>
+      <div class="kv"><b>联系方式</b><span id="dContact">-</span></div>
+      <div class="kv"><b>活动区间</b><span id="dSpan">-</span></div>
+    </div>
+    <h3 style="margin:18px 0 6px;">名下活动（按活动去重）</h3>
+    <div id="dActs"></div>
+  </div>
+
+  <script>
+    const PAGE_SIZE=20;
+    let offset=0, total=0, IS_ADMIN=false;
+
+    function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+    function fmtDate(s){return s?String(s).slice(0,10):'';}
+
+    function contactBrief(c){
+      if(!c) return '<span class="muted">—</span>';
+      const parts=[];
+      if(c.persons&&c.persons.length) parts.push('联系人:'+esc(c.persons.join('、')));
+      if(c.phone&&c.phone.length) parts.push('电话:'+esc(c.phone.join('、')));
+      if(c.email&&c.email.length) parts.push(esc(c.email.join('、')));
+      if(c.wechat&&c.wechat.length) parts.push('微信:'+esc(c.wechat.join('、')));
+      return parts.length?parts.join('<br>'):'<span class="muted">—</span>';
+    }
+
+    async function reload(){
+      offset=0; await load();
+    }
+    async function load(){
+      const q=document.getElementById('q').value.trim();
+      const region=document.getElementById('region').value.trim();
+      const sort=document.getElementById('sort').value;
+      const u=new URL('/api/v1/organizers/',location.origin);
+      u.searchParams.set('limit',PAGE_SIZE); u.searchParams.set('offset',offset);
+      u.searchParams.set('sort_by',sort); u.searchParams.set('sort_dir','desc');
+      if(q) u.searchParams.set('search',q);
+      if(region) u.searchParams.set('region',region);
+      const r=await fetch(u); if(!r.ok){if(r.status===401)location.href='/login';return;}
+      const d=await r.json();
+      total=d.total||0;
+      const tb=document.getElementById('tb');
+      tb.innerHTML=(d.items||[]).map(o=>`
+        <tr>
+          <td><span class="name">${esc(o.canonical_name)}</span>${o.aliases&&o.aliases.length?`<br><span class="muted">别名 ${o.aliases.length} 个</span>`:''}</td>
+          <td>${esc(o.region||'')||'<span class="muted">—</span>'}</td>
+          <td><span class="cnt">${o.event_count}</span></td>
+          <td>${(o.voting_platforms||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')||'<span class="muted">—</span>'}</td>
+          <td style="max-width:220px;">${contactBrief(o.contact)}</td>
+          <td>${fmtDate(o.last_activity_at)||'<span class="muted">—</span>'}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="openDetail(${o.id})">查看</button>
+            ${IS_ADMIN?`<button class="btn btn-secondary btn-sm" onclick="doMerge(${o.id})">合并</button>`:''}
+          </td>
+        </tr>`).join('');
+      document.getElementById('empty').style.display=(d.items&&d.items.length)?'none':'block';
+      const from=total?offset+1:0, to=Math.min(offset+PAGE_SIZE,total);
+      document.getElementById('pageInfo').textContent=`${from}-${to} / 共 ${total}`;
+    }
+    function prevPage(){ if(offset>0){offset=Math.max(0,offset-PAGE_SIZE);load();} }
+    function nextPage(){ if(offset+PAGE_SIZE<total){offset+=PAGE_SIZE;load();} }
+
+    async function openDetail(id){
+      const r=await fetch('/api/v1/organizers/'+id); if(!r.ok)return;
+      const o=await r.json();
+      document.getElementById('dName').textContent=o.canonical_name||'-';
+      document.getElementById('dAlias').textContent=(o.aliases&&o.aliases.length)?('别名：'+o.aliases.join('、')):'';
+      document.getElementById('dRegion').textContent=o.region||'—';
+      document.getElementById('dCount').textContent=o.event_count;
+      document.getElementById('dPlatforms').innerHTML=(o.voting_platforms||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')||'—';
+      document.getElementById('dContact').innerHTML=contactBrief(o.contact);
+      document.getElementById('dSpan').textContent=(fmtDate(o.first_activity_at)||'?')+' ~ '+(fmtDate(o.last_activity_at)||'?');
+      document.getElementById('dActs').innerHTML=(o.activities||[]).map(a=>`
+        <div class="act">
+          <div>${a.url?`<a href="${esc(a.url)}" target="_blank">${esc(a.event_name||a.title||'(无标题)')}</a>`:esc(a.event_name||a.title||'(无标题)')}</div>
+          <div class="muted">${fmtDate(a.publish_time)} ${a.activity_status?('· '+esc(a.activity_status)):''} ${a.voting_platform?('· '+esc(a.voting_platform)):''}</div>
+        </div>`).join('')||'<div class="muted">暂无活动明细</div>';
+      document.getElementById('mask').style.display='block';
+      document.getElementById('drawer').classList.add('open');
+    }
+    function closeDrawer(){document.getElementById('mask').style.display='none';document.getElementById('drawer').classList.remove('open');}
+
+    function doExport(){
+      const q=document.getElementById('q').value.trim(), region=document.getElementById('region').value.trim();
+      const u=new URL('/api/v1/organizers/export.csv',location.origin);
+      if(q)u.searchParams.set('search',q); if(region)u.searchParams.set('region',region);
+      window.open(u,'_blank');
+    }
+    async function doRebuild(){
+      if(!confirm('全量重建主办方库？将按最新线索数据重新归并（人工合并结果会保留）。'))return;
+      const msg=document.getElementById('msg'); msg.textContent='重建中，请稍候…';
+      const r=await fetch('/api/v1/organizers/rebuild',{method:'POST'});
+      const d=await r.json().catch(()=>({}));
+      msg.textContent=r.ok?`重建完成：分组 ${d.groups}，写入 ${d.upserted}，扫描线索 ${d.leads_scanned}`:(d.detail||'重建失败');
+      if(r.ok)reload();
+    }
+    async function doMerge(id){
+      const target=prompt('把该主办方并入的【目标主档案 id】（在列表中查看目标行）：');
+      if(!target)return;
+      const tid=parseInt(target,10); if(!tid||tid===id){alert('目标 id 非法');return;}
+      const r=await fetch(`/api/v1/organizers/${id}/merge?target_id=${tid}`,{method:'POST'});
+      const d=await r.json().catch(()=>({}));
+      document.getElementById('msg').textContent=r.ok?`已合并：${d.merged_lead_count} 条线索归入 #${tid}`:(d.detail||'合并失败');
+      if(r.ok)reload();
+    }
+
+    document.addEventListener('me-loaded',function(e){
+      const role=(e.detail&&e.detail.role)||'member';
+      IS_ADMIN=(role==='admin'||role==='super');
+      if(IS_ADMIN)document.getElementById('rebuildBtn').style.display='';
+      load();
+      // 从线索详情页跳转过来：?id=xxx 直接打开该主办方详情
+      const qid=new URLSearchParams(location.search).get('id');
+      if(qid)openDetail(parseInt(qid,10));
+    });
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>

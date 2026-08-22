@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>系统设置 - 微信搜一搜采集器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#1e293b; --panel-2:#243449; --border:#334155;
+      --text:#f1f5f9; --text-2:#94a3b8; --text-3:#64748b;
+      --brand:#149f90; --brand-hover:#2dd4bf; --brand-press:#147373;
+      --danger:#f87171; --warn:#fbbf24; --ok:#34d399;
+      --radius-card:12px; --radius-btn:8px; --shadow:0 1px 2px rgba(2,6,23,0.4);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif; font-size:15px; background:var(--bg); color:var(--text); }
+    h1,h2,h3,.sidebar-header { font-family:"Sora","Noto Sans SC","Microsoft YaHei",sans-serif; }
+
+    /* 侧边栏 */
+    .sidebar { width:240px; background:var(--panel); color:var(--text); min-height:100vh; position:fixed; left:0; top:0; border-right:1px solid var(--border); }
+    .sidebar-header { padding:20px; font-size:18px; font-weight:600; border-bottom:1px solid var(--border); color:var(--text); }
+    .sidebar-menu { list-style:none; padding:20px 0; }
+    .sidebar-menu a { display:block; text-decoration:none; }
+    .sidebar-menu li { padding:12px 20px; cursor:pointer; transition:all .2s; border-left:3px solid transparent; color:var(--text-2); }
+    .sidebar-menu li:hover { background:var(--panel-2); border-left-color:var(--brand); color:var(--text); }
+    .sidebar-menu li.active { background:rgba(20,159,144,.15); border-left-color:var(--brand); color:var(--brand-hover); }
+
+    /* 主内容区 */
+    .main-content { margin-left:240px; padding:30px; }
+    .header { background:var(--panel); padding:20px 30px; border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; }
+    .header h1 { font-size:24px; color:var(--text); }
+    .header .subtitle { font-size:14px; color:var(--text-2); margin-top:6px; }
+
+    /* 卡片 */
+    .card { background:var(--panel); border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; }
+    .card-header { padding:18px 24px; border-bottom:1px solid var(--border); }
+    .card-header h2 { font-size:18px; color:var(--text); }
+    .card-header .desc { font-size:13px; color:var(--text-3); margin-top:4px; }
+    .card-body { padding:24px; }
+
+    /* 按钮 */
+    .btn { padding:10px 20px; border:none; border-radius:var(--radius-btn); cursor:pointer; font-size:14px; transition:all .2s; font-family:inherit; }
+    .btn-primary { background:var(--brand); color:#fff; }
+    .btn-primary:hover { background:var(--brand-hover); }
+    .btn-primary:active { background:var(--brand-press); }
+    .btn-secondary { background:var(--panel-2); color:var(--text-2); border:1px solid var(--border); }
+    .btn-secondary:hover { background:#2f435c; color:var(--text); }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+
+    /* 表单 */
+    .form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; margin-bottom:6px; font-weight:500; color:var(--text-2); font-size:14px; }
+    .form-group input, .form-group textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-btn); font-size:14px; background:var(--panel-2); color:var(--text); font-family:inherit; }
+    .form-group input:focus, .form-group textarea:focus { outline:none; border-color:var(--brand); }
+    .form-group small { display:block; margin-top:5px; color:var(--text-3); font-size:12px; }
+    .prompt-textarea { min-height:180px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace; font-size:13px; line-height:1.6; resize:vertical; }
+
+    /* API 密钥状态 */
+    .api-key-status { padding:8px 14px; border-radius:var(--radius-btn); font-size:14px; display:inline-block; }
+    .api-key-set { background:rgba(52,211,153,.15); color:#6ee7b7; border:1px solid rgba(52,211,153,.35); }
+    .api-key-missing { background:rgba(248,113,113,.15); color:#fca5a5; border:1px solid rgba(248,113,113,.35); }
+
+    .hint-box { margin-top:8px; padding:12px 16px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; }
+    .hint-box p { font-size:13px; color:var(--text-2); margin:0; line-height:1.6; }
+
+    /* Toast */
+    .toast { position:fixed; top:20px; right:20px; background:var(--panel-2); color:var(--text); padding:12px 24px; border-radius:var(--radius-btn); border:1px solid var(--border); opacity:0; transition:opacity .3s; z-index:2000; box-shadow:var(--shadow); }
+    .toast.show { opacity:1; }
+    .toast.success { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .toast.error { background:var(--danger); color:#fff; border-color:var(--danger); }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; }
+    ::-webkit-scrollbar-thumb:hover { background:#475569; }
+  </style>
+</head>
+<body>
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu">
+      <a href="/admin"><li>线索列表</li></a>
+      <a href="/admin/keywords"><li>数据优化</li></a>
+      <a href="/admin/collection"><li>采集设置</li></a>
+      <a href="/admin/devices"><li>设备监控</li></a>
+      <a href="/admin/settings"><li class="active">系统设置</li></a>
+    </ul>
+  </div>
+
+  <!-- 主内容区 -->
+  <div class="main-content">
+    <div class="header">
+      <h1>系统设置</h1>
+      <p class="subtitle">配置大模型服务参数与 AI 清洗提示词，保存后自动生效（无需重启容器）。</p>
+    </div>
+
+    <!-- API 密钥状态 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🔐 API 密钥</h2>
+        <p class="desc">支持在此填写密钥（加密思路：仅存服务器本地 secrets.json，不写入配置、不入 git）。也可用服务器环境变量 OPENAI_API_KEY。</p>
+      </div>
+      <div class="card-body">
+        <div id="apiKeyStatus" style="margin-bottom:12px;"></div>
+        <form id="keyForm">
+          <div class="form-group">
+            <label>API 密钥 (api_key)</label>
+            <input type="password" id="apiKey" placeholder="留空表示不修改；填写则覆盖保存" autocomplete="new-password">
+            <small>密钥仅保存在服务器本地，页面不会回显已保存的密钥明文。DeepSeek 密钥形如 sk-xxxx。</small>
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-primary">保存密钥</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- 后台 LLM 清洗开关 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🧽 后台 LLM 清洗</h2>
+        <p class="desc">入库时先用规则评分快速判定线索并提升；LLM 清洗在后台异步运行（60s 一轮），补全活动信息与线上投票识别。开启后无需重启容器。</p>
+      </div>
+      <div class="card-body">
+        <div id="cleanStatus"></div>
+        <label class="form-group">
+          <input type="checkbox" id="cleanEnabled" style="width:auto;"> 自动清洗（当前未启用）
+        </label>
+        <small>开关会写进 rule_config.json 的 llm.clean_enabled。注意：docker-compose 环境变量的优先级最高，最终生效值以两者或一为准。</small>
+      </div>
+    </div>
+
+    <!-- LLM 模型配置 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🤖 大模型配置</h2>
+        <p class="desc">对接 OpenAI 兼容接口（WebAI2API / DeepSeek / 通义千问 / OpenAI 等）。</p>
+      </div>
+      <div class="card-body">
+        <form id="llmForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>服务地址 (base_url)</label>
+              <input type="text" id="baseUrl" placeholder="http://host.docker.internal:3000/v1" required>
+              <small>容器内访问宿主机请用 host.docker.internal</small>
+            </div>
+            <div class="form-group">
+              <label>模型名称 (model)</label>
+              <input type="text" id="model" list="modelList" placeholder="gpt-4o-mini / deepseek-chat" required>
+              <datalist id="modelList"></datalist>
+              <small>可直接输入，或点右侧按钮从服务端拉取可选模型</small>
+              <button type="button" class="btn btn-secondary" id="fetchModelsBtn" style="margin-top:6px;">获取模型列表</button>
+            </div>
+            <div class="form-group">
+              <label>超时时间 (秒)</label>
+              <input type="number" id="timeout" min="10" max="300">
+            </div>
+            <div class="form-group">
+              <label>采样温度 (temperature)</label>
+              <input type="number" id="temperature" step="0.1" min="0" max="2">
+            </div>
+            <div class="form-group">
+              <label>最大 Token 数 (max_tokens)</label>
+              <input type="number" id="maxTokens" min="128" max="8192">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-primary">保存模型配置</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 提示词配置 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>💬 AI 清洗提示词</h2>
+        <p class="desc">控制大模型如何判定线索价值与抽取活动信息，留空则回退到内置默认。</p>
+      </div>
+      <div class="card-body">
+        <form id="promptForm">
+          <div class="form-group">
+            <label>系统角色设定 (system_prompt)</label>
+            <textarea class="prompt-textarea" id="systemPrompt" rows="8"></textarea>
+            <small>定义 AI 助手的核心职责、判定口径与工作风格</small>
+          </div>
+          <div class="form-group">
+            <label>输出契约 (schema_hint)</label>
+            <textarea class="prompt-textarea" id="schemaHint" rows="14"></textarea>
+            <small>规定模型返回的 JSON 结构字段（修改需谨慎，字段名需与后端解析保持一致）</small>
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-primary">保存提示词</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 从当前页面来源推导 API 基址：本地/云端部署都自动适配（同源）。
+    const API_BASE = window.location.origin + '/api/v1';
+
+    document.addEventListener('DOMContentLoaded', loadSettings);
+
+    // 加载所有设置
+    async function loadSettings() {
+      try {
+        const response = await fetch(`${API_BASE}/settings/system`);
+        if (!response.ok) throw new Error('加载失败');
+        const data = await response.json();
+
+        // API Key 状态
+        const apiKeyStatus = document.getElementById('apiKeyStatus');
+        if (data.llm_config.api_key_set) {
+          apiKeyStatus.innerHTML = `<span class="api-key-status api-key-set">✅ API 密钥已配置</span>`;
+        } else {
+          apiKeyStatus.innerHTML = `<span class="api-key-status api-key-missing">⚠️ API 密钥未配置</span>`;
+        }
+
+        // LLM 配置
+        document.getElementById('baseUrl').value = data.llm_config.base_url || '';
+        document.getElementById('model').value = data.llm_config.model || 'gpt-4o-mini';
+        document.getElementById('timeout').value = data.llm_config.timeout || 60;
+        document.getElementById('temperature').value = data.llm_config.temperature ?? 0.2;
+        document.getElementById('maxTokens').value = data.llm_config.max_tokens || 1024;
+
+        // 提示词
+        document.getElementById('systemPrompt').value = data.prompts.system_prompt || '';
+        document.getElementById('schemaHint').value = data.prompts.schema_hint || '';
+
+        // 后台清洗开关
+        const cleanStatusEl = document.getElementById('cleanStatus');
+        const cleanChk = document.getElementById('cleanEnabled');
+        if (data.is_llm_clean_active) {
+          cleanStatusEl.innerHTML = '<span class="badge badge-success">已启用（60s/轮）</span>';
+          cleanChk.checked = true;
+        } else {
+          cleanStatusEl.innerHTML = '<span class="badge res-normal">未启用</span>';
+          cleanChk.checked = false;
+        }
+      } catch (error) {
+        console.error('加载设置失败:', error);
+        showToast('加载设置失败：' + error.message, 'error');
+      }
+    }
+
+    // 保存 LLM 配置
+    document.getElementById('llmForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const payload = {
+        llm_base_url: document.getElementById('baseUrl').value,
+        llm_model: document.getElementById('model').value,
+        llm_timeout: parseFloat(document.getElementById('timeout').value),
+        llm_temperature: parseFloat(document.getElementById('temperature').value),
+        llm_max_tokens: parseInt(document.getElementById('maxTokens').value),
+        clean_enabled: document.getElementById('cleanEnabled').checked, // ← 新增
+      };
+      await save(payload, '✅ 模型配置已保存并生效');
+    });
+
+    // 保存提示词
+    document.getElementById('promptForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const payload = {
+        system_prompt: document.getElementById('systemPrompt').value,
+        schema_hint: document.getElementById('schemaHint').value,
+      };
+      await save(payload, '✅ 提示词已保存并生效');
+    });
+
+    // 保存密钥（单独写 secrets.json）
+    document.getElementById('keyForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const key = document.getElementById('apiKey').value.trim();
+      if (!key) { showToast('请先输入密钥', 'error'); return; }
+      await save({ api_key: key }, '✅ 密钥已保存并生效');
+      document.getElementById('apiKey').value = '';
+      loadSettings();
+    });
+
+    // 获取模型列表（用当前 base_url + 可选临时密钥试拉）
+    document.getElementById('fetchModelsBtn').addEventListener('click', async function() {
+      const btn = this;
+      const baseUrl = document.getElementById('baseUrl').value.trim();
+      const key = document.getElementById('apiKey').value.trim();
+      btn.disabled = true; btn.textContent = '拉取中...';
+      try {
+        const params = new URLSearchParams();
+        if (baseUrl) params.set('base_url', baseUrl);
+        if (key) params.set('api_key', key);
+        const resp = await fetch(`${API_BASE}/settings/models?${params.toString()}`);
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        const list = document.getElementById('modelList');
+        list.innerHTML = (data.models || []).map(m => `<option value="${m}">`).join('');
+        showToast(`✅ 拉取到 ${data.count} 个模型，点模型输入框可选`, 'success');
+      } catch (error) {
+        console.error('拉取模型失败:', error);
+        showToast('拉取模型失败：' + error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = '获取模型列表';
+      }
+    });
+
+    // 通用保存
+    async function save(payload, okMsg) {
+      try {
+        const response = await fetch(`${API_BASE}/settings/system`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        showToast(okMsg, 'success');
+      } catch (error) {
+        console.error('保存失败:', error);
+        showToast('保存失败：' + error.message, 'error');
+      }
+    }
+
+    // Toast 提示
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type} show`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>

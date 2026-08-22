@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>反馈管理 - 微信搜一搜采集器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#1e293b; --panel-2:#243449; --border:#334155;
+      --text:#f1f5f9; --text-2:#94a3b8; --text-3:#64748b;
+      --brand:#149f90; --brand-hover:#2dd4bf; --danger:#f87171; --warn:#fbbf24; --ok:#34d399;
+      --radius-card:12px; --radius-btn:8px; --shadow:0 1px 2px rgba(2,6,23,0.4);
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif; font-size:15px; background:var(--bg); color:var(--text); }
+    h1,h2,h3,.sidebar-header { font-family:"Sora","Noto Sans SC",sans-serif; }
+    .sidebar { width:240px; background:var(--panel); min-height:100vh; position:fixed; left:0; top:0; border-right:1px solid var(--border); }
+    .sidebar-header { padding:20px; font-size:18px; font-weight:600; border-bottom:1px solid var(--border); }
+    .sidebar-menu { list-style:none; padding:20px 0; }
+    .sidebar-menu a { display:block; text-decoration:none; }
+    .sidebar-menu li { padding:12px 20px; cursor:pointer; transition:all .2s; border-left:3px solid transparent; color:var(--text-2); }
+    .sidebar-menu li:hover { background:var(--panel-2); border-left-color:var(--brand); color:var(--text); }
+    .sidebar-menu li.active { background:rgba(20,159,144,.15); border-left-color:var(--brand); color:var(--brand-hover); }
+    .main-content { margin-left:240px; padding:30px; }
+    .header { background:var(--panel); padding:20px 30px; border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; }
+    .header h1 { font-size:24px; }
+    .header .subtitle { font-size:14px; color:var(--text-2); margin-top:6px; }
+    .btn { padding:8px 16px; border:none; border-radius:var(--radius-btn); cursor:pointer; font-size:14px; background:var(--panel-2); color:var(--text-2); border:1px solid var(--border); font-family:inherit; }
+    .btn:hover { background:#2f435c; color:var(--text); }
+    .btn-primary { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .btn-primary:hover { background:var(--brand-hover); }
+    .filters { display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+    .chip { padding:6px 14px; border-radius:16px; cursor:pointer; border:1px solid var(--border); background:var(--panel); color:var(--text-2); font-size:13px; }
+    .chip.active { background:rgba(20,159,144,.18); border-color:var(--brand); color:var(--brand-hover); }
+    .table-container { background:var(--panel); border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+    .table-header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    .table-header h2 { font-size:18px; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:11px 14px; text-align:left; border-bottom:1px solid var(--border); font-size:14px; vertical-align:top; }
+    th { color:var(--text-2); font-weight:600; }
+    td { color:var(--text-2); }
+    tr:hover td { background:rgba(148,163,184,.06); color:var(--text); }
+    .badge { padding:3px 9px; border-radius:6px; font-size:12px; font-weight:500; display:inline-block; }
+    .badge-cat { background:rgba(56,189,248,.15); color:#7dd3fc; }
+    .badge-open { background:rgba(251,191,36,.15); color:#fcd34d; }
+    .badge-resolved { background:rgba(52,211,153,.15); color:#6ee7b7; }
+    .badge-wontfix { background:rgba(148,163,184,.15); color:#cbd5e1; }
+    .lead-tag { display:inline-block; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+                padding:1px 7px; margin:2px 3px 0 0; font-size:12px; color:var(--brand-hover); cursor:pointer; }
+    .lead-tag:hover { background:#2f435c; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; }
+    #toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:8px; color:#fff; z-index:3000; display:none; }
+    #toast.success { background:var(--ok); } #toast.error { background:var(--danger); } #toast.show { display:block; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu"></ul>
+  </div>
+
+  <div class="main-content">
+    <div class="header">
+      <div>
+        <h1>反馈管理</h1>
+        <p class="subtitle">测试人员就地提交的问题反馈（含重复活动判定）；点线索号可回看板核对。</p>
+      </div>
+      <button class="btn" onclick="loadAll()">🔄 刷新</button>
+    </div>
+
+    <div class="filters">
+      <span class="chip active" data-s="" onclick="setFilter('')">全部</span>
+      <span class="chip" data-s="open" onclick="setFilter('open')">待处理 <b id="cOpen">0</b></span>
+      <span class="chip" data-s="resolved" onclick="setFilter('resolved')">已处理 <b id="cResolved">0</b></span>
+      <span class="chip" data-s="wontfix" onclick="setFilter('wontfix')">不处理 <b id="cWontfix">0</b></span>
+    </div>
+
+    <div class="table-container">
+      <div class="table-header"><h2>反馈列表</h2></div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:60px;">ID</th><th style="width:110px;">类型</th><th>描述 / 涉及线索</th>
+            <th style="width:120px;">提交人</th><th style="width:150px;">时间</th>
+            <th style="width:90px;">状态</th><th style="width:200px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="fbBody"><tr><td colspan="7" style="text-align:center;color:var(--text-3);">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const API_BASE = window.location.origin + '/api/v1';
+    let curFilter = '';
+
+    function esc(t){ const d=document.createElement('div'); d.textContent = t==null?'':String(t); return d.innerHTML; }
+    function fmtTime(v){ if(!v) return '-'; try { return new Date(v).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(e){ return v; } }
+    function showToast(msg,type='success'){ const t=document.getElementById('toast'); t.textContent=msg; t.className=type+' show'; setTimeout(()=>t.className='',2500); }
+
+    const CAT_HINT = { '重复活动':'badge-cat', '漏判':'badge-cat', '误判为广告':'badge-cat', '清洗错误':'badge-cat', '其他':'badge-cat' };
+    const STATUS_LABEL = { open:['待处理','badge-open'], resolved:['已处理','badge-resolved'], wontfix:['不处理','badge-wontfix'] };
+
+    function setFilter(s){
+      curFilter = s;
+      document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.s === s));
+      loadAll();
+    }
+
+    async function loadAll(){
+      const body = document.getElementById('fbBody');
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-3);">加载中...</td></tr>';
+      try {
+        const url = curFilter ? `${API_BASE}/feedback?status=${curFilter}` : `${API_BASE}/feedback`;
+        const resp = await fetch(url);
+        if(!resp.ok) throw new Error('加载失败');
+        const j = await resp.json();
+        const s = j.summary || {};
+        document.getElementById('cOpen').textContent = s.open || 0;
+        document.getElementById('cResolved').textContent = s.resolved || 0;
+        document.getElementById('cWontfix').textContent = s.wontfix || 0;
+        render(j.data || []);
+      } catch(e){
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);">加载失败</td></tr>';
+      }
+    }
+
+    // 线索号 → 可点击标签，跳线索列表并搜索该 ID（新窗口）。
+    function leadTags(ids){
+      if(!Array.isArray(ids) || !ids.length) return '';
+      return '<div style="margin-top:6px;">' + ids.map(id =>
+        `<a class="lead-tag" href="/admin#lead=${id}" target="_blank" title="在线索列表查看 #${id}">#${id}</a>`
+      ).join('') + '</div>';
+    }
+
+    function render(rows){
+      const body = document.getElementById('fbBody');
+      if(!rows.length){ body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-3);">暂无反馈</td></tr>'; return; }
+      body.innerHTML = rows.map(r => {
+        const [slabel, scls] = STATUS_LABEL[r.status] || ['?','badge-open'];
+        const desc = r.description ? `<div>${esc(r.description)}</div>` : '<span style="color:var(--text-3);">（无描述）</span>';
+        const note = r.admin_note ? `<div style="margin-top:5px;color:var(--text-3);font-size:12px;">处理备注：${esc(r.admin_note)}</div>` : '';
+        let ops = '';
+        if(r.status === 'open'){
+          ops = `<button class="btn btn-primary" onclick="resolve(${r.id},'resolved')">标记已处理</button>
+                 <button class="btn" onclick="resolve(${r.id},'wontfix')">不处理</button>`;
+        } else {
+          ops = `<button class="btn" onclick="resolve(${r.id},'open')">重新打开</button>`;
+        }
+        return `<tr>
+          <td>${r.id}</td>
+          <td><span class="badge ${CAT_HINT[r.category]||'badge-cat'}">${esc(r.category)}</span></td>
+          <td>${desc}${leadTags(r.lead_ids)}${note}${r.page_url?`<div style="margin-top:4px;color:var(--text-3);font-size:12px;">页面：${esc(r.page_url)}</div>`:''}</td>
+          <td>${esc(r.created_by_name||'-')}</td>
+          <td>${fmtTime(r.created_at)}</td>
+          <td><span class="badge ${scls}">${slabel}</span></td>
+          <td>${ops}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function resolve(fid, status){
+      let admin_note = '';
+      if(status === 'wontfix'){ admin_note = prompt('不处理原因（可选）：') || ''; }
+      try {
+        const r = await fetch(`${API_BASE}/feedback/${fid}`, {
+          method:'PATCH', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ status, admin_note }),
+        });
+        if(!r.ok) throw new Error('fail');
+        showToast('已更新', 'success');
+        loadAll();
+      } catch(e){ showToast('操作失败，请重试', 'error'); }
+    }
+
+    loadAll();
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>

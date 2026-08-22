@@ -1,0 +1,17 @@
+{
+  "_readme": "黄金标尺评测集（Golden Benchmark Set）——终结'0 标注盲调'。每次改规则/Prompt 后跑 run_prompt_benchmark 对比，量化是否真变准。",
+  "_how_to_build": [
+    "1) 在 worker 容器跑: python -m wxsearch.run_prompt_benchmark --export 60 > /tmp/cand.json（按五类分层抽样）",
+    "2) 人工逐条填真值标签，把标好的行并入下方 samples（目标 50 条：10 真P0 / 15 真P1 / 10 竞品 / 10 周期 / 5 垃圾）",
+    "3) 跑评测: --layer rule（免费）/ --layer llm（耗token）"
+  ],
+  "_schema": {
+    "id": "qualified_leads.id（真实线索，评测时按 id 取 title/content）",
+    "title": "标题（仅供人工核对，非评测输入）",
+    "expected_value": "true/false —— 是否真有商机价值（价值判断真值）",
+    "expected_priority": "P0/P1/P2 —— 优先级真值（P0=黄金筹备期）",
+    "expected_pool": "商机/竞品/待核实/周期/归档 —— 分池真值",
+    "note": "场景备注（真P0-红头文件 / 真P1-征集申报 / 竞品-已有第三方投票 / 周期-公示往届带届次 / 垃圾-学术评审或纯意见征集）"
+  },
+  "samples": []
+}

@@ -1,0 +1,232 @@
+version: '3.8'
+
+services:
+  # =====================================================
+  # PostgreSQL 主数据库 (15 版本)
+  # =====================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: wxsearch_db
+    restart: always
+    environment:
+      POSTGRES_DB: wx_search
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docs/db_schema.sql:/docker-entrypoint-initdb.d/init.sql  # 自动初始化建表脚本
+    ports:
+      - "5432:5432"
+    networks:
+      - wxsearch_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d wx_search"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # Redis 缓存 (7 版本)
+  # =====================================================
+  redis:
+    image: redis:7-alpine
+    container_name: wxsearch_redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD_required} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_required}
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - wxsearch_net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # Celery Worker (AI 处理 worker)
+  # =====================================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wxsearch_worker
+    restart: always
+    command: celery -A wxsearch.tasks worker -l info -c 4  # 并发 4 个任务
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}  # 从环境变量读取
+      # AI 分析层开关（默认关闭=预留跳过）。设为 1/true 开启。
+      AI_ENABLED: ${AI_ENABLED:-false}
+      # 评分后端：rule=离线规则（默认，免费无外呼）/ llm=接大模型（预留，需 OPENAI_API_KEY）。
+      AI_BACKEND: ${AI_BACKEND:-rule}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      # 模型名默认留空：由系统设置页面（rule_config.json 的 llm.model）决定；如需强制覆盖可在宿主机设 AI_MODEL。
+      AI_MODEL: ${AI_MODEL:-}
+      # 无人值守调度地基开关（默认开启）。设 0/false 关闭到期重排/崩溃自愈/心跳。
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      SCHEDULER_STALE_CLAIM_MINUTES: ${SCHEDULER_STALE_CLAIM_MINUTES:-15}
+      # 告警层（默认开，仅日志）。配了 ALERT_WEBHOOK_URL 才外发；同键告警有冷却去重。
+      ALERT_ENABLED: ${ALERT_ENABLED:-true}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_HEARTBEAT_TIMEOUT_SECONDS: ${ALERT_HEARTBEAT_TIMEOUT_SECONDS:-180}
+      ALERT_COOLDOWN_MINUTES: ${ALERT_COOLDOWN_MINUTES:-30}
+      ALERT_FAILURE_THRESHOLD: ${ALERT_FAILURE_THRESHOLD:-5}
+      # 数据备份（默认开，每日凌晨 pg_dump）。备份落到宿主机 ./backups，保留最近 BACKUP_KEEP 份。
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      # 设备在线/离线判定阈值（秒）。需大于单个关键词最长采集耗时，避免长采集期间心跳滞后被误判离线。
+      DEVICE_ONLINE_TIMEOUT: ${DEVICE_ONLINE_TIMEOUT:-600}
+      DEVICE_FAIL_THRESHOLD: ${DEVICE_FAIL_THRESHOLD:-3}
+      # 测试采集库 -> 正式业务库同步（默认关闭；真实密钥只放服务器 .env）。
+      PROD_SYNC_ENABLED: ${PROD_SYNC_ENABLED:-false}
+      PROD_SYNC_URL: ${PROD_SYNC_URL:-}
+      PROD_SYNC_SECRET: ${PROD_SYNC_SECRET:-}
+      PROD_SYNC_SOURCE: ${PROD_SYNC_SOURCE:-local-collector}
+      PROD_SYNC_BATCH: ${PROD_SYNC_BATCH:-100}
+      PROD_SYNC_TIMEOUT: ${PROD_SYNC_TIMEOUT:-30}
+      COLLECT_LOG_TOKEN: ${COLLECT_LOG_TOKEN:-}
+    volumes:
+      # 日志 + 代码 + 迁移脚本
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+      # 数据库备份输出目录（容器内 /app/backups → 宿主机 ./backups，容器重建不丢）
+      - ./backups:/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
+  # =====================================================
+  # Celery Beat (定时调度器)
+  # =====================================================
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wxsearch_beat
+    restart: always
+    command: celery -A wxsearch.tasks beat -l info  # 使用默认 PersistentScheduler
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-4}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+    volumes:
+      # 日志 + 代码 + 迁移脚本，使 beat_schedule 等改动热加载（与 worker 一致），无需 rebuild
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    networks:
+      - wxsearch_net
+
+  # =====================================================
+  # FastAPI 管理后台 API
+  # =====================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wxsearch_backend
+    restart: always
+    command: uvicorn wxsearch.api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      ENVIRONMENT: production
+      # 会话签名密钥（多团队登录 Cookie 签名用）；必须由服务器 .env 显式提供。
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET_required}
+      SYNC_SHARED_SECRET: ${SYNC_SHARED_SECRET:-}
+      COLLECT_LOG_TOKEN: ${COLLECT_LOG_TOKEN:-}
+      # 设备在线判定阈值（秒）：与 worker 保持一致，供 /api/v1/devices 在线状态计算。
+      DEVICE_ONLINE_TIMEOUT: ${DEVICE_ONLINE_TIMEOUT:-600}
+    volumes:
+      # 日志 + 代码 + 迁移脚本
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # =====================================================
+  # Nginx 反向代理（可选；当前测试环境使用 leads-tunnel.service SSH 反向隧道，默认不启动）
+  # =====================================================
+  nginx:
+    profiles: ["nginx"]
+    image: nginx:alpine
+    container_name: wxsearch_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - wxsearch_net
+
+  # =====================================================
+  # Adminer 数据库管理工具 (开发用)
+  # =====================================================
+  adminer:
+    image: adminer
+    container_name: wxsearch_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DEFAULT_DB: wx_search
+      ADMINER_DEFAULT_USER: admin
+    depends_on:
+      - postgres
+    networks:
+      - wxsearch_net
+
+networks:
+  wxsearch_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,76 @@
+{
+  "keywords": [
+    "评选征集"
+  ],
+  "result_type": "article",
+  "database": {
+    "path": "data/wechat_search.db"
+  },
+  "collect": {
+    "max_scrolls": 30,
+    "max_items_per_keyword": 200,
+    "scroll_pause_sec": 1.2,
+    "stop_after_no_new_rounds": 3,
+    "fetch_url": true
+  },
+  "delays": {
+    "action_pause_sec": 0.8,
+    "window_wait_sec": 8.0,
+    "input_settle_sec": 1.0
+  },
+  "selectors": {
+    "main_window_class_candidates": [
+      "Chrome_WidgetWin_0",
+      "WeChatMainWndForPC",
+      "mmui::MainWindow",
+      "Weixin"
+    ],
+    "main_window_name_candidates": [
+      "微信",
+      "Weixin"
+    ],
+    "search_edit_name_candidates": [
+      "搜索"
+    ],
+    "search_entry_keyword_candidates": [
+      "搜一搜",
+      "搜索一下"
+    ],
+    "search_result_window_name_candidates": [
+      "搜一搜",
+      "搜索"
+    ],
+    "article_tab_name_candidates": [
+      "文章"
+    ],
+    "more_button_name_candidates": [
+      "更多",
+      "...",
+      "···"
+    ],
+    "copy_link_menu_candidates": [
+      "复制链接",
+      "复制链接地址"
+    ],
+    "search_doc_keyword": "搜一搜",
+    "app_menu_button_class": "AppMenuButton",
+    "article_url_prefix": "https://mp.weixin.qq.com",
+    "chat_window_class": "mmui::MainWindow",
+    "search_entry_button_name": "搜一搜",
+    "search_entry_button_class": "mmui::XTabBarItem",
+    "filter_row_labels": [
+      "排序",
+      "类型",
+      "时间",
+      "范围"
+    ],
+    "filter_sort": "最新",
+    "filter_type": "文章",
+    "filter_time": "最近七天",
+    "filter_scope": ""
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/collector.log"
+  }
+}

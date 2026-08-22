@@ -1,0 +1,28 @@
+# 微信 PC 客户端搜一搜采集器依赖
+# 仅支持 Windows 平台
+
+# UI 自动化核心库（基于 Windows UI Automation）
+uiautomation>=2.0.18
+
+# 剪贴板操作（用于稳定输入中文关键词）
+pyperclip>=1.8.2
+
+# 配置文件（可选，使用内置 json 也可）
+# 保留 pyyaml 以便后续扩展 yaml 配置
+PyYAML>=6.0
+
+# 本地 Web 后台（管理关键词/筛选/采集参数 + 启动采集）
+# FastAPI + Jinja2（模板支持）
+fastapi>=0.109.0
+jinja2>=3.1.2
+uvicorn[standard]>=0.27.0
+
+# 服务端运行时：Docker worker / FastAPI 均依赖这些库。
+celery>=5.3
+redis>=5.0
+psycopg2-binary>=2.9
+requests>=2.31
+
+# 搜狗微信采集驱动(wxsearch/collectors/sogou_pw.py)：桌面 Chromium + 手机 MQQBrowser UA 伪装
+# 采集端(VM/宿主)需安装；首次需 playwright install chromium 下载浏览器。Docker worker 不跑浏览器、不受影响。
+playwright>=1.62

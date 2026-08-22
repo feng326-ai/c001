@@ -1,0 +1,155 @@
+# Python 产物
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志文件
+*.log
+logs/
+install_log.txt
+deploy_log.txt
+build_output.txt
+live_log*.txt
+
+# 调试脚本和临时产物
+tools/_*
+tools/*.png
+tools/*.html
+tools/*.xml
+tools/*.out
+tools/*.txt
+!requirements*.txt
+
+# 备份文件
+backups/*.dump
+backups/*.db
+*.bak
+backup_*.sql
+
+# 截图和屏幕录制
+*_screen.png
+_screen2.png
+*.jpg
+*.jpeg
+*.gif
+
+# 部署脚本 (这些是临时生成的)
+*.ps1
+*.sh
+*.bat
+config.json
+DEPLOYMENT*.md
+QUICK*.md
+MANUAL*.md
+TROUBLESHOOTING*.md
+
+# Docker 相关临时文件
+docker/nginx.conf
+# 该配置被默认 docker-compose.yml 挂载，必须随源码交付。
+!docker/nginx.conf
+
+# Windows 换行警告标记
+AUTO_DEPLOY_WINDOWS.ps1
+DEPLOY*.bat
+full_demo.py
+full_demo.pyc
+
+# 数据库临时文件
+*.sqlite3
+*.db
+# 主数据库保留
+!wxsearch/config/wx_search.db
+# schema 定义保留
+!docs/*.sql
+
+# 密钥/敏感配置（页面填写的 API 密钥存这里，绝不入库）
+wxsearch/config/secrets.json
+
+# Redis dump
+*.rdb
+
+# 其他临时文件
+*.tmp
+temp/
+.cache/
+
+# Git/GitHub 忽略的文件
+.gitattributes
+
+# 文档备份
+README.bak.md
+
+# AI 模型缓存
+*.pt
+*.pth
+*.onnx
+
+# 环境变量文件
+.env
+.env.local
+
+# 敏感信息 (如果有)
+*.pem
+*.key
+*.crt
+secrets/
+
+# 一次性部署脚本与生成文档（非项目源码，只在本地保留）
+/_deploy_tmp/
+/DOCS_HANDOVER.md
+/*_log.txt
+/*_output.txt
+/*_result.txt
+/*_diag.txt
+/path_test.txt
+/rejected_result.txt
+/remote_diagnosis.txt
+/requirements_clean.txt
+/auto_deploy*.py
+/deploy_*.py
+/simple_api.py
+/start_services.py
+/run_phase1_and_2_tests.py
+/test_api.py
+/server_output.txt
+@AutomationLog.txt
+docs/_*
+*_GUIDE.md
+*_INSTRUCTIONS.md
+*_CHECKLIST.md
+*_SETUP.md
+FINAL_DEPLOY_STEPS.md
+FIX_DOCKER_BUILD_ERROR.md
+LAST_STEP_INSTRUCTIONS.md
+LEADS_MANUAL.md

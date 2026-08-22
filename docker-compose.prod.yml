@@ -1,0 +1,172 @@
+version: '3.8'
+
+# 服务端部署版（测试/生产均不在 Compose 内提供入口代理）：
+# - 去掉 nginx(80) / adminer(8080)；测试入口走 SSH 反向隧道，生产入口由宿主机负责
+# - backend 去掉 --reload
+# - postgres 不挂 initdb 脚本（改为从现有库 pg_restore 恢复完整 schema+数据）
+# 用法：docker compose -p xiansuo -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wxsearch_db
+    restart: always
+    environment:
+      POSTGRES_DB: wx_search
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - wxsearch_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d wx_search"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: wxsearch_redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD_required} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_required}
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - wxsearch_net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  celery-worker:
+    image: xiansuo-app:latest
+    container_name: wxsearch_worker
+    restart: always
+    command: celery -A wxsearch.tasks worker -l info -c 4
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_BACKEND: ${AI_BACKEND:-rule}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-}
+      LLM_CLEAN_ENABLED: ${LLM_CLEAN_ENABLED:-false}
+      LLM_CLEAN_BATCH: ${LLM_CLEAN_BATCH:-5}
+      LLM_CLEAN_MAX_ATTEMPTS: ${LLM_CLEAN_MAX_ATTEMPTS:-3}
+      LLM_CLEAN_BREAK_AFTER: ${LLM_CLEAN_BREAK_AFTER:-3}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      SCHEDULER_STALE_CLAIM_MINUTES: ${SCHEDULER_STALE_CLAIM_MINUTES:-15}
+      ALERT_ENABLED: ${ALERT_ENABLED:-true}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_HEARTBEAT_TIMEOUT_SECONDS: ${ALERT_HEARTBEAT_TIMEOUT_SECONDS:-180}
+      ALERT_COOLDOWN_MINUTES: ${ALERT_COOLDOWN_MINUTES:-30}
+      ALERT_FAILURE_THRESHOLD: ${ALERT_FAILURE_THRESHOLD:-5}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      DEVICE_ONLINE_TIMEOUT: ${DEVICE_ONLINE_TIMEOUT:-600}
+      DEVICE_FAIL_THRESHOLD: ${DEVICE_FAIL_THRESHOLD:-3}
+      PROD_SYNC_ENABLED: ${PROD_SYNC_ENABLED:-false}
+      PROD_SYNC_URL: ${PROD_SYNC_URL:-}
+      PROD_SYNC_SECRET: ${PROD_SYNC_SECRET:-}
+      PROD_SYNC_SOURCE: ${PROD_SYNC_SOURCE:-local-collector}
+      PROD_SYNC_BATCH: ${PROD_SYNC_BATCH:-100}
+      PROD_SYNC_TIMEOUT: ${PROD_SYNC_TIMEOUT:-30}
+      COLLECT_LOG_TOKEN: ${COLLECT_LOG_TOKEN:-}
+    volumes:
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+      - ./backups:/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
+  celery-beat:
+    image: xiansuo-app:latest
+    container_name: wxsearch_beat
+    restart: always
+    command: celery -A wxsearch.tasks beat -l info
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-4}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+    volumes:
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    networks:
+      - wxsearch_net
+
+  backend:
+    image: xiansuo-app:latest
+    container_name: wxsearch_backend
+    restart: always
+    command: uvicorn wxsearch.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_required}@postgres/wx_search
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD_required}@redis:6379/0
+      DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      ENVIRONMENT: production
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET_required}
+      SYNC_SHARED_SECRET: ${SYNC_SHARED_SECRET:-}
+      COLLECT_LOG_TOKEN: ${COLLECT_LOG_TOKEN:-}
+      DEVICE_ONLINE_TIMEOUT: ${DEVICE_ONLINE_TIMEOUT:-600}
+    volumes:
+      - ./logs:/app/logs
+      - ./wxsearch:/app/wxsearch
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wxsearch_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+networks:
+  wxsearch_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: ${PGDATA_VOLUME:-xiansuo_pgdata}
+  redisdata:
+    name: ${REDISDATA_VOLUME:-xiansuo_redisdata}

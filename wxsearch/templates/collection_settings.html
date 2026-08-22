@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>采集设置 - 微信搜一搜采集器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#1e293b; --panel-2:#243449; --border:#334155;
+      --text:#f1f5f9; --text-2:#94a3b8; --text-3:#64748b;
+      --brand:#149f90; --brand-hover:#2dd4bf; --brand-press:#147373;
+      --danger:#f87171; --warn:#fbbf24; --ok:#34d399;
+      --radius-card:12px; --radius-btn:8px; --shadow:0 1px 2px rgba(2,6,23,0.4);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif; font-size:15px; background:var(--bg); color:var(--text); }
+    h1,h2,h3,.sidebar-header { font-family:"Sora","Noto Sans SC","Microsoft YaHei",sans-serif; }
+
+    .sidebar { width:240px; background:var(--panel); color:var(--text); min-height:100vh; position:fixed; left:0; top:0; border-right:1px solid var(--border); }
+    .sidebar-header { padding:20px; font-size:18px; font-weight:600; border-bottom:1px solid var(--border); color:var(--text); }
+    .sidebar-menu { list-style:none; padding:20px 0; }
+    .sidebar-menu a { display:block; text-decoration:none; }
+    .sidebar-menu li { padding:12px 20px; cursor:pointer; transition:all .2s; border-left:3px solid transparent; color:var(--text-2); }
+    .sidebar-menu li:hover { background:var(--panel-2); border-left-color:var(--brand); color:var(--text); }
+    .sidebar-menu li.active { background:rgba(20,159,144,.15); border-left-color:var(--brand); color:var(--brand-hover); }
+
+    .main-content { margin-left:240px; padding:30px; }
+    .header { background:var(--panel); padding:20px 30px; border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; }
+    .header h1 { font-size:24px; color:var(--text); }
+    .header .subtitle { font-size:14px; color:var(--text-2); margin-top:6px; }
+
+    .card { background:var(--panel); border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; }
+    .card-header { padding:18px 24px; border-bottom:1px solid var(--border); }
+    .card-header h2 { font-size:18px; color:var(--text); }
+    .card-header .desc { font-size:13px; color:var(--text-3); margin-top:4px; }
+    .card-body { padding:24px; }
+
+    .btn { padding:9px 18px; border:none; border-radius:var(--radius-btn); cursor:pointer; font-size:14px; transition:all .2s; font-family:inherit; }
+    .btn-primary { background:var(--brand); color:#fff; }
+    .btn-primary:hover { background:var(--brand-hover); }
+    .btn-secondary { background:var(--panel-2); color:var(--text-2); border:1px solid var(--border); }
+    .btn-secondary:hover { background:#2f435c; color:var(--text); }
+    .btn-danger { background:var(--danger); color:#fff; }
+    .btn-danger:hover { background:#ef4444; }
+    .btn-sm { padding:4px 10px; font-size:12px; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+
+    .form-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; margin-bottom:6px; font-weight:500; color:var(--text-2); font-size:14px; }
+    .form-group input, .form-group select { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-btn); font-size:14px; background:var(--panel-2); color:var(--text); font-family:inherit; }
+    .form-group input:focus, .form-group select:focus { outline:none; border-color:var(--brand); }
+    .form-group select option { background:var(--panel); color:var(--text); }
+    .form-group small { display:block; margin-top:5px; color:var(--text-3); font-size:12px; }
+
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-size:14px; }
+    th { color:var(--text-2); font-weight:600; }
+    td { color:var(--text-2); }
+    tr:hover td { background:rgba(148,163,184,.06); color:var(--text); }
+
+    .badge { padding:3px 9px; border-radius:6px; font-size:12px; font-weight:500; display:inline-block; }
+    .badge-success { background:rgba(52,211,153,.15); color:#6ee7b7; }
+    .badge-muted { background:rgba(148,163,184,.15); color:#cbd5e1; }
+
+    .kw-add-row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+    .kw-add-row input { flex:1; min-width:180px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-btn); background:var(--panel-2); color:var(--text); font-size:14px; font-family:inherit; }
+
+    .toast { position:fixed; top:20px; right:20px; background:var(--panel-2); color:var(--text); padding:12px 24px; border-radius:var(--radius-btn); border:1px solid var(--border); opacity:0; transition:opacity .3s; z-index:2000; box-shadow:var(--shadow); }
+    .toast.show { opacity:1; }
+    .toast.success { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .toast.error { background:var(--danger); color:#fff; border-color:var(--danger); }
+
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu">
+      <a href="/admin"><li>线索列表</li></a>
+      <a href="/admin/keywords"><li>数据优化</li></a>
+      <a href="/admin/collection"><li class="active">采集设置</li></a>
+      <a href="/admin/devices"><li>设备监控</li></a>
+      <a href="/admin/settings"><li>系统设置</li></a>
+    </ul>
+  </div>
+
+  <div class="main-content">
+    <div class="header">
+      <h1>采集设置</h1>
+      <p class="subtitle">配置搜一搜/搜狗微信的采集筛选条件与上限（采集器下次任务时生效）。</p>
+    </div>
+
+    <!-- 搜一搜采集参数 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🔍 搜一搜采集参数</h2>
+        <p class="desc">微信 PC 客户端搜一搜的筛选条件与采集量上限。</p>
+      </div>
+      <div class="card-body">
+        <form id="wechatForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>排序方式</label>
+              <select id="wxSort">
+                <option value="最新">最新</option>
+                <option value="综合">综合</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>结果类型</label>
+              <select id="wxType">
+                <option value="文章">文章</option>
+                <option value="全部">全部</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>时间范围</label>
+              <select id="wxTime">
+                <option value="最近一天">最近一天</option>
+                <option value="最近七天">最近七天</option>
+                <option value="最近一月">最近一月</option>
+                <option value="最近一年">最近一年</option>
+                <option value="不限">不限</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>范围（可选）</label>
+              <input type="text" id="wxScope" placeholder="留空为默认">
+            </div>
+            <div class="form-group">
+              <label>每词最大采集条数</label>
+              <input type="number" id="wxMaxItems" min="10" max="1000">
+            </div>
+            <div class="form-group">
+              <label>最大滚动次数</label>
+              <input type="number" id="wxMaxScrolls" min="5" max="100">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-primary">保存搜一搜参数</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 搜狗微信采集参数 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🐶 搜狗微信采集参数</h2>
+        <p class="desc">搜狗微信渠道的筛选条件（该渠道尚未接入主采集流程，此处为预配置）。</p>
+      </div>
+      <div class="card-body">
+        <form id="sogouForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>启用该渠道</label>
+              <select id="sgEnabled">
+                <option value="false">停用</option>
+                <option value="true">启用</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>时间范围</label>
+              <select id="sgTime">
+                <option value="最近一天">最近一天</option>
+                <option value="最近一周">最近一周</option>
+                <option value="最近一月">最近一月</option>
+                <option value="不限">不限</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>结果类型</label>
+              <select id="sgType">
+                <option value="文章">文章</option>
+                <option value="全部">全部</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>每词最大采集条数</label>
+              <input type="number" id="sgMaxItems" min="10" max="1000">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-primary">保存搜狗参数</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin + '/api/v1';
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loadCollectionSettings();
+    });
+
+   // ============ 采集参数 ============
+    async function loadCollectionSettings() {
+      try {
+        const resp = await fetch(`${API_BASE}/settings/collection`);
+        if (!resp.ok) throw new Error('加载失败');
+        const d = await resp.json();
+        const w = d.wechat || {}, s = d.sogou || {};
+        setVal('wxSort', w.filter_sort); setVal('wxType', w.filter_type);
+        setVal('wxTime', w.filter_time); document.getElementById('wxScope').value = w.filter_scope || '';
+        document.getElementById('wxMaxItems').value = w.max_items_per_keyword ?? 200;
+        document.getElementById('wxMaxScrolls').value = w.max_scrolls ?? 30;
+        setVal('sgEnabled', String(s.enabled === true)); setVal('sgTime', s.filter_time);
+        setVal('sgType', s.filter_type);
+        document.getElementById('sgMaxItems').value = s.max_items_per_keyword ?? 100;
+      } catch (e) {
+        console.error(e);
+        showToast('加载采集参数失败：' + e.message, 'error');
+      }
+    }
+
+    // 给下拉赋值（值不在选项内时追加为自定义项，避免丢失采集机实际标签）
+    function setVal(id, val) {
+      if (val === undefined || val === null || val === '') return;
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const has = Array.from(sel.options).some(o => o.value === String(val));
+      if (!has) { const o = document.createElement('option'); o.value = String(val); o.textContent = String(val); sel.appendChild(o); }
+      sel.value = String(val);
+    }
+
+    document.getElementById('wechatForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const payload = { wechat: {
+        filter_sort: document.getElementById('wxSort').value,
+        filter_type: document.getElementById('wxType').value,
+        filter_time: document.getElementById('wxTime').value,
+        filter_scope: document.getElementById('wxScope').value,
+        max_items_per_keyword: parseInt(document.getElementById('wxMaxItems').value),
+        max_scrolls: parseInt(document.getElementById('wxMaxScrolls').value),
+      }};
+      await saveCollection(payload, '✅ 搜一搜参数已保存');
+    });
+
+    document.getElementById('sogouForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const payload = { sogou: {
+        enabled: document.getElementById('sgEnabled').value === 'true',
+        filter_time: document.getElementById('sgTime').value,
+        filter_type: document.getElementById('sgType').value,
+        max_items_per_keyword: parseInt(document.getElementById('sgMaxItems').value),
+      }};
+      await saveCollection(payload, '✅ 搜狗参数已保存');
+    });
+
+    async function saveCollection(payload, okMsg) {
+      try {
+        const resp = await fetch(`${API_BASE}/settings/collection`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        showToast(okMsg, 'success');
+      } catch (e) {
+        showToast('保存失败：' + e.message, 'error');
+      }
+    }
+
+    // ============ 工具 ============
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text == null ? '' : String(text);
+      return div.innerHTML;
+    }
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type} show`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>

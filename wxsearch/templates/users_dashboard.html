@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成员管理 - 线索管理系统</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#111c31;--panel-2:#18263f;--border:#243549;--text:#e6edf6;--text-2:#9fb0c3;--text-3:#64748b;--brand:#149f90;--brand-hover:#22b8a6;--danger:#ef4444;--radius:12px;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:15px;display:flex;}
+    h1,h2,h3,.sidebar-header{font-family:"Sora","Noto Sans SC","Microsoft YaHei",sans-serif;}
+    .sidebar{width:240px;flex-shrink:0;min-height:100vh;background:var(--panel);border-right:1px solid var(--border);}
+    .sidebar-header{padding:20px;font-size:18px;font-weight:600;border-bottom:1px solid var(--border);}
+    .sidebar-menu{list-style:none;padding:20px 0;margin:0;}
+    .sidebar-menu li{padding:12px 20px;cursor:pointer;color:var(--text-2);border-left:3px solid transparent;}
+    .sidebar-menu li:hover{background:var(--panel-2);color:var(--text);}
+    .sidebar-menu li.active{background:rgba(20,159,144,.15);border-left-color:var(--brand);color:var(--brand-hover);}
+    .sidebar-menu a{text-decoration:none;}
+    .main{flex:1;padding:30px;}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;background:var(--panel);padding:20px 30px;border:1px solid var(--border);border-radius:var(--radius);}
+    h1{font-size:24px;margin:0;}
+    .userbox{color:var(--text-2);font-size:14px;}
+    .userbox a{color:var(--brand-hover);margin-left:12px;}
+    table{width:100%;border-collapse:collapse;margin-top:12px;}
+    th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--border);font-size:14px;}
+    th{color:var(--text-2);}
+    td{color:var(--text-2);}
+    .btn{padding:7px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;}
+    .btn-primary{background:var(--brand);color:#fff;}
+    .btn-secondary{background:var(--panel-2);color:var(--text-2);border:1px solid var(--border);}
+    .btn-danger{background:var(--danger);color:#fff;}
+    input,select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:14px;}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+    .badge{padding:3px 9px;border-radius:6px;font-size:12px;}
+    .b-on{background:rgba(52,211,153,.15);color:#6ee7b7;}
+    .b-off{background:rgba(248,113,113,.15);color:#fca5a5;}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu">
+      <a href="/admin"><li>线索公海</li></a>
+      <a href="/admin/library"><li>⭐ 我的活动库</li></a>
+      <a href="/admin/ai_library"><li>AI活动库</li></a>
+      <a href="/admin/keywords"><li>数据优化</li></a>
+      <a href="/admin/collection"><li>采集设置</li></a>
+      <a href="/admin/devices"><li>设备监控</li></a>
+      <a href="/admin/settings"><li>系统设置</li></a>
+      <li class="active">成员管理</li>
+    </ul>
+  </div>
+  <div class="main">
+    <div class="header">
+      <h1>成员管理</h1>
+      <div class="userbox"><span id="whoami"></span><a href="/logout">退出</a></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">新增成员</h3>
+      <div class="row">
+        <input id="nu" placeholder="用户名">
+        <input id="np" type="password" placeholder="初始密码">
+        <select id="nr"><option value="member">成员</option><option value="admin">管理员</option></select>
+        <select id="nt" style="display:none;"></select>
+        <button class="btn btn-primary" onclick="createUser()">创建</button>
+      </div>
+      <div id="teamCreate" class="row" style="margin-top:12px;display:none;">
+        <input id="ntname" placeholder="新团队名称">
+        <button class="btn btn-secondary" onclick="createTeam()">新建团队</button>
+      </div>
+      <div id="msg" style="color:#fca5a5;font-size:13px;margin-top:10px;min-height:16px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">成员列表</h3>
+      <table>
+        <thead><tr><th>ID</th><th>用户名</th><th>团队</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="menuPermCard" style="display:none;">
+      <h3 style="margin-top:0;">菜单权限管理</h3>
+      <div class="muted" style="color:var(--text-3);font-size:13px;margin-bottom:8px;">
+        设置每个角色可见的菜单（勾选=显示）。超管恒见全部、不可配；“线索公海”为默认首页强制可见。
+      </div>
+      <table>
+        <thead><tr><th>菜单</th><th style="text-align:center;">普通管理员</th><th style="text-align:center;">成员</th></tr></thead>
+        <tbody id="permTb"></tbody>
+      </table>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;">
+        <button class="btn btn-primary" onclick="saveMenuPerms()">保存权限</button>
+        <span id="permMsg" style="color:var(--text-2);font-size:13px;"></span>
+      </div>
+    </div>
+  </div>
+  <script>
+    let ME=null, TEAMS=[];
+    async function load(){
+      const r=await fetch('/api/v1/users');
+      if(!r.ok){location.href='/login';return;}
+      const d=await r.json();
+      ME=d.me; TEAMS=d.teams||[];
+      document.getElementById('whoami').textContent=`${ME.username}（${ME.team_name||'-'} · ${roleName(ME.role)}）`;
+      if(ME.role==='super'){
+        const sel=document.getElementById('nt'); sel.style.display='';
+        sel.innerHTML=TEAMS.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+        document.getElementById('teamCreate').style.display='';
+        document.getElementById('menuPermCard').style.display='';
+        loadMenuPerms();
+      }
+      const tb=document.getElementById('tb');
+      tb.innerHTML=d.data.map(u=>`
+        <tr>
+          <td>${u.id}</td><td>${esc(u.username)}</td><td>${esc(u.team_name||'-')}</td>
+          <td>${roleName(u.role)}</td>
+          <td>${u.enabled?'<span class="badge b-on">启用</span>':'<span class="badge b-off">停用</span>'}</td>
+          <td>
+            ${u.role==='super'?'—':`
+              <button class="btn btn-secondary" onclick="toggleRole(${u.id},'${u.role}')">${u.role==='admin'?'降为成员':'升为管理员'}</button>
+              <button class="btn ${u.enabled?'btn-danger':'btn-primary'}" onclick="toggleEnabled(${u.id},${u.enabled})">${u.enabled?'停用':'启用'}</button>
+            `}
+          </td>
+        </tr>`).join('');
+    }
+    // ===== 菜单权限管理（仅超管）=====
+    let PERM_ITEMS=[];
+    async function loadMenuPerms(){
+      const r=await fetch('/api/v1/menu_permissions'); if(!r.ok)return;
+      const d=await r.json();
+      PERM_ITEMS=d.items||[];
+      const perms=d.permissions||{admin:{},member:{}};
+      document.getElementById('permTb').innerHTML=PERM_ITEMS.map(it=>{
+        const forced=(it.key==='/admin');  // 线索公海强制可见
+        function cell(role){
+          const on=forced?true:!!(perms[role]&&perms[role][it.key]);
+          return `<td style="text-align:center;"><input type="checkbox" data-role="${role}" data-key="${esc(it.key)}" ${on?'checked':''} ${forced?'disabled':''}></td>`;
+        }
+        return `<tr><td>${esc(it.label)}</td>${cell('admin')}${cell('member')}</tr>`;
+      }).join('');
+    }
+    async function saveMenuPerms(){
+      const permissions={admin:{},member:{}};
+      document.querySelectorAll('#permTb input[type=checkbox]').forEach(cb=>{
+        permissions[cb.dataset.role][cb.dataset.key]=cb.checked;
+      });
+      const msg=document.getElementById('permMsg'); msg.textContent='保存中…';
+      const r=await fetch('/api/v1/menu_permissions',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions})});
+      const d=await r.json().catch(()=>({}));
+      msg.textContent=r.ok?'已保存（成员刷新页面即生效）':(d.detail||'保存失败');
+      if(r.ok)loadMenuPerms();
+    }
+
+    function roleName(r){return r==='super'?'超级管理员':(r==='admin'?'管理员':'成员');}
+    function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+    async function createUser(){
+      const body={username:document.getElementById('nu').value.trim(),password:document.getElementById('np').value,role:document.getElementById('nr').value};
+      if(ME.role==='super')body.team_id=parseInt(document.getElementById('nt').value||'0')||null;
+      const r=await fetch('/api/v1/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok){document.getElementById('nu').value='';document.getElementById('np').value='';load();}
+      else document.getElementById('msg').textContent=d.detail||'创建失败';
+    }
+    async function createTeam(){
+      const name=document.getElementById('ntname').value.trim();if(!name)return;
+      const r=await fetch('/api/v1/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      if(r.ok){document.getElementById('ntname').value='';load();}
+    }
+    async function toggleEnabled(id,en){await fetch('/api/v1/users/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!en})});load();}
+    async function toggleRole(id,role){await fetch('/api/v1/users/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:role==='admin'?'member':'admin'})});load();}
+    load();
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>

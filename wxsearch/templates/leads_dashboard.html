@@ -1,0 +1,2211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>线索管理平台 - 微信搜一搜采集器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#1e293b; --panel-2:#243449; --border:#334155;
+      --text:#f1f5f9; --text-2:#94a3b8; --text-3:#64748b;
+      --brand:#149f90; --brand-hover:#2dd4bf; --brand-press:#147373;
+      --danger:#f87171; --warn:#fbbf24; --ok:#34d399;
+      --radius-card:12px; --radius-btn:8px; --shadow:0 1px 2px rgba(2,6,23,0.4);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif; font-size:15px; background:var(--bg); color:var(--text); }
+    h1,h2,h3,.sidebar-header { font-family:"Sora","Noto Sans SC","Microsoft YaHei",sans-serif; }
+
+    /* 侧边栏 */
+    .sidebar { width:240px; background:var(--panel); color:var(--text); min-height:100vh; position:fixed; left:0; top:0; border-right:1px solid var(--border); }
+    .sidebar-header { padding:20px; font-size:18px; font-weight:600; border-bottom:1px solid var(--border); color:var(--text); }
+    .sidebar-menu { list-style:none; padding:20px 0; }
+    .sidebar-menu li { padding:12px 20px; cursor:pointer; transition:all .2s; border-left:3px solid transparent; color:var(--text-2); }
+    .sidebar-menu li:hover { background:var(--panel-2); border-left-color:var(--brand); color:var(--text); }
+    .sidebar-menu li.active { background:rgba(20,159,144,.15); border-left-color:var(--brand); color:var(--brand-hover); }
+
+    /* 主内容区 */
+    .main-content { margin-left:240px; padding:30px; }
+    .header { background:var(--panel); padding:20px 30px; border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; }
+    .header h1 { font-size:24px; color:var(--text); }
+
+    /* 统计卡片 */
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+    .stat-card { background:var(--panel); padding:14px 18px; border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); }
+    .stat-card h3 { font-size:13px; color:var(--text-2); margin-bottom:4px; font-weight:500; }
+    .stat-card .number { font-size:26px; font-weight:700; color:var(--text); }
+    .stat-card.blue { border-left:4px solid #38bdf8; }
+    .stat-card.green { border-left:4px solid var(--ok); }
+    .stat-card.orange { border-left:4px solid var(--warn); }
+    .stat-card.red { border-left:4px solid var(--danger); }
+    .stat-card.teal { border-left:4px solid #2dd4bf; }
+
+    /* 表格容器 */
+    .table-container { background:var(--panel); border-radius:var(--radius-card); box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+    .table-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+    .table-header h2 { font-size:18px; color:var(--text); }
+    .table-scroll { overflow-x:auto; }
+
+    /* 按钮 */
+    .btn { padding:8px 16px; border:none; border-radius:var(--radius-btn); cursor:pointer; font-size:14px; transition:all .2s; font-family:inherit; }
+    .btn-primary { background:var(--brand); color:#fff; }
+    .btn-primary:hover { background:var(--brand-hover); }
+    .btn-primary:active { background:var(--brand-press); }
+    .btn-success { background:var(--brand); color:#fff; }
+    .btn-success:hover { background:var(--brand-hover); }
+    .btn-danger { background:var(--danger); color:#fff; }
+    .btn-danger:hover { background:#ef4444; }
+    .btn-secondary { background:var(--panel-2); color:var(--text-2); border:1px solid var(--border); }
+    .btn-secondary:hover { background:#2f435c; color:var(--text); }
+    .btn-warning { background:rgba(251,191,36,.9); color:#1f2937; font-weight:600; }
+    .btn-warning:hover { background:#fcd34d; }
+
+    /* 表格 */
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:12px 14px; text-align:left; border-bottom:1px solid var(--border); font-size:14px; }
+    th { background:var(--panel); font-weight:600; color:var(--text-2); }
+    td { color:var(--text-2); }
+    tr:hover td { background:rgba(148,163,184,.06); color:var(--text); }
+    a { color:var(--brand-hover); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .lead-title { color:var(--text); cursor:pointer; }
+    .lead-title:hover { color:var(--brand-hover); text-decoration:underline; }
+
+    /* 徽章 */
+    .badge { padding:3px 9px; border-radius:6px; font-size:12px; font-weight:500; display:inline-block; }
+    .badge-success { background:rgba(52,211,153,.15); color:#6ee7b7; }
+    .badge-warning { background:rgba(251,191,36,.15); color:#fcd34d; }
+    .badge-danger { background:rgba(248,113,113,.15); color:#fca5a5; }
+    .badge-info { background:rgba(56,189,248,.15); color:#7dd3fc; }
+    .lvl-P0 { background:rgba(248,113,113,.18); color:#fca5a5; }
+    .lvl-P1 { background:rgba(251,191,36,.18); color:#fcd34d; }
+    .lvl-P2 { background:rgba(148,163,184,.15); color:#cbd5e1; }
+    /* 渠道图标与资源等级徐章 */
+    .channel-icon { width:18px; height:18px; vertical-align:middle; margin-right:3px; border-radius:3px; object-fit:contain; background:#fff; padding:1px; }
+    .res-excellent { background:rgba(251,191,36,.2); color:#fcd34d; border:1px solid rgba(251,191,36,.45); font-weight:600; }
+    .res-normal { background:rgba(148,163,184,.15); color:#cbd5e1; }
+
+    /* 筛选区 */
+    .filters { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+    .filter-input, .filter-select { padding:10px 14px; border:1px solid var(--border); border-radius:var(--radius-btn); background:var(--panel-2); color:var(--text); font-size:14px; font-family:inherit; }
+    .filter-input { flex:0 0 240px; min-width:160px; }
+    .filter-input::placeholder { color:var(--text-3); }
+    .filter-select { min-width:150px; }
+    /* 快捷筛选芯片（单字+背景，激活高亮） */
+    .qchip { display:inline-flex; align-items:center; padding:4px 12px; border-radius:14px; font-size:13px; cursor:pointer; user-select:none; background:transparent; color:var(--text-3); border:1px solid var(--border); transition:all .15s; }
+    .qchip:hover { border-color:var(--brand); color:var(--text); background:rgba(20,159,144,.08); }
+    .qchip.active { background:var(--brand); color:#fff; border-color:var(--brand); font-weight:600; box-shadow:0 2px 8px rgba(20,159,144,.35); }
+    .quick-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:-4px 0 16px; }
+    .qf-group { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:var(--panel); }
+    .qf-label { color:var(--text-3); font-size:12px; }
+    .filter-select option { background:var(--panel); color:var(--text); }
+
+    /* 分页 */
+    .pagination { display:flex; justify-content:center; align-items:center; gap:8px; padding:20px; }
+    .page-btn { padding:8px 16px; border:1px solid var(--border); background:var(--panel-2); color:var(--text-2); cursor:pointer; border-radius:var(--radius-btn); }
+    .page-btn:hover { color:var(--text); border-color:var(--brand); }
+    .page-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+    /* 模态框 */
+    .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(2,6,23,.7); z-index:1000; }
+    .modal.show { display:flex; justify-content:center; align-items:center; }
+    .modal-content { background:var(--panel); padding:28px; border-radius:var(--radius-card); border:1px solid var(--border); width:640px; max-width:92%; max-height:82vh; overflow-y:auto; box-shadow:0 20px 50px rgba(2,6,23,.6); }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .modal-header h2 { font-size:20px; color:var(--text); }
+    .close-btn { background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-3); }
+    .close-btn:hover { color:var(--text); }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; margin-bottom:6px; font-weight:500; color:var(--text-2); }
+    .form-group input, .form-group textarea, .form-group select { width:100%; padding:10px; border:1px solid var(--border); border-radius:var(--radius-btn); font-size:14px; background:var(--panel-2); color:var(--text); font-family:inherit; }
+
+    /* 详情弹窗 */
+    .detail-section { margin-bottom:18px; }
+    .detail-section .label { font-size:13px; color:var(--text-3); margin-bottom:6px; font-weight:600; }
+    .detail-section .value { font-size:14px; color:var(--text); line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+    .score-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px 20px; }
+    .score-item { display:flex; justify-content:space-between; padding:6px 10px; background:var(--panel-2); border-radius:6px; font-size:13px; }
+    .score-item .k { color:var(--text-2); }
+    .score-item .v { color:var(--brand-hover); font-weight:600; }
+    .content-box { max-height:320px; overflow-y:auto; padding:12px 14px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; font-size:14px; line-height:1.7; color:var(--text); white-space:pre-wrap; word-break:break-word; text-indent:2em; }
+    
+    /* 表头维度说明小图标（悬停看原生 title 提示） */
+    th .tooltip {
+      display: inline-block;
+      width: 15px;
+      height: 15px;
+      margin-left: 4px;
+      font-size: 11px;
+      line-height: 15px;
+      text-align: center;
+      border-radius: 50%;
+      background: var(--text-3);
+      color: var(--bg);
+      font-weight: 700;
+      cursor: help;
+      vertical-align: middle;
+    }
+    .content-empty { color:var(--text-3); font-style:italic; }
+
+    /* 空状态 */
+    .empty-state { text-align:center; padding:60px 20px; color:var(--text-3); }
+    .empty-state h3 { font-size:18px; margin-bottom:10px; color:var(--text-2); }
+
+    /* Toast */
+    .toast { position:fixed; top:20px; right:20px; background:var(--panel-2); color:var(--text); padding:12px 24px; border-radius:var(--radius-btn); border:1px solid var(--border); opacity:0; transition:opacity .3s; z-index:2000; box-shadow:var(--shadow); }
+    .toast.show { opacity:1; }
+    .toast.success { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .toast.error { background:var(--danger); color:#fff; border-color:var(--danger); }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; }
+    ::-webkit-scrollbar-thumb:hover { background:#475569; }
+
+    /* 表格新增列：活动名称/活动信息/备注 —— 截断显示，悬停看完整 title，点击进悬浮窗编辑 */
+    .cell-ellip { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+        .th-resizable { position:relative; }
+        .th-resizable .resize-handle { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; user-select:none; }
+        .th-resizable .resize-handle:hover { background:var(--brand); opacity:0.3; }
+    .cell-ellip.empty { color:var(--text-3); }
+    /* 活动名称：限宽 + 最多两行，超出省略，悬停(title)看完整 */
+    .col-event_name { max-width:240px; }
+    .col-event_name.empty { color:var(--text-3); }
+    .evname { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; word-break:break-all; vertical-align:middle; }
+    /* 资源等级：多个徐章单行并列，不换行 */
+    .col-resource { white-space:nowrap; }
+    /* 防列被挤窄导致折行把行擑高：表格设最小宽 + 单元格默认不换行（横向滚动），仅活动名列保留两行。 */
+    #leadsTable { width:100%; }
+    #leadsTable td { white-space:nowrap; vertical-align:middle; }
+    #leadsTable td.col-title { white-space:normal; }
+    /* 非超管角色隐藏关键词列（由 JS 给 body 加 class 触发） */
+    body.hide-keyword .col-keyword { display:none !important; }
+    #leadsTable td.col-event_name { white-space:normal; }
+    #leadsTable th.col-event_name, #leadsTable td.col-event_name { min-width:150px; }
+
+    /* 悬浮标注面板：非阻塞（不铺全屏遮罩），可拖拽、可缩放、始终置顶，
+       打开后不影响主界面其他按钮操作 */
+    .float-panel { display:none; position:fixed; right:24px; bottom:24px; z-index:10000;
+      width:440px; min-width:320px; max-width:92vw; height:auto; max-height:82vh;
+      background:var(--panel); border:1px solid var(--brand); border-radius:var(--radius-card);
+      box-shadow:0 24px 60px rgba(2,6,23,.7); flex-direction:column; resize:both; overflow:hidden; }
+    .float-panel.show { display:flex; }
+    .float-panel .fp-header { display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; background:var(--panel-2); border-bottom:1px solid var(--border);
+      cursor:move; user-select:none; }
+    .float-panel .fp-header h3 { font-size:15px; color:var(--text); margin:0; max-width:340px;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .float-panel .fp-body { padding:16px; overflow-y:auto; flex:1; }
+    .float-panel .fp-body textarea { resize:vertical; min-height:64px; }
+    .float-panel .fp-footer { display:flex; gap:10px; align-items:center;
+      padding:12px 16px; border-top:1px solid var(--border); background:var(--panel-2); }
+    .fp-export { display:flex; align-items:center; gap:6px; color:var(--text-2); font-size:13px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="sidebar-header">🎯 线索管理系统</div>
+    <ul class="sidebar-menu" id="sidebarMenu">
+      <a href="/admin" style="text-decoration:none;"><li data-page="leads"><img src="/static/icons/gonghaikehu.svg" alt="公海" style="width:16px;height:16px;vertical-align:middle;margin-right:5px;">线索公海</li></a>
+      <a href="/admin/library" style="text-decoration:none;"><li data-page="library">⭐ 我的活动库</li></a>
+      <a href="/admin/ai_library" style="text-decoration:none;"><li data-page="ai_library"><img src="/static/icons/jiqiren.svg" alt="AI" style="width:16px;height:16px;vertical-align:middle;margin-right:5px;">AI活动库</li></a>
+      <a href="/admin/keywords" data-super-only style="text-decoration:none; display:none;"><li>数据优化</li></a>
+      <a href="/admin/collection" data-super-only style="text-decoration:none; display:none;"><li>采集设置</li></a>
+      <a href="/admin/devices" data-super-only style="text-decoration:none; display:none;"><li>设备监控</li></a>
+      <a href="/admin/sogou" data-super-only style="text-decoration:none; display:none;"><li>搜狗采集</li></a>
+      <a href="/admin/settings" data-super-only style="text-decoration:none; display:none;"><li>系统设置</li></a>
+      <a href="/admin/feedback" data-super-only style="text-decoration:none; display:none;"><li>反馈管理</li></a>
+      <a href="/admin/users" id="navUsers" style="text-decoration:none; display:none;"><li>成员管理</li></a>
+    </ul>
+  </div>
+
+  <!-- 主内容区 -->
+  <div class="main-content">
+    <!-- 头部 -->
+    <div class="header">
+      <h1 id="pageTitle">线索公海</h1>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <span id="userBox" style="color:var(--text-2); font-size:14px;"></span>
+        <span class="status-indicator" style="display: flex; align-items: center; gap: 8px; color: var(--text-2);">
+          <span class="dot" style="width: 10px; height: 10px; border-radius: 50%; background: #2ecc71;"></span>
+          系统运行中
+        </span>
+        <a href="javascript:void(0)" onclick="openChangePwd()" style="color:var(--brand-hover); text-decoration:none; font-size:14px;">修改密码</a>
+        <a href="/logout" style="color:var(--brand-hover); text-decoration:none; font-size:14px;">退出</a>
+      </div>
+    </div>
+
+    <!-- 统计卡片（按视图差异化，JS 动态填充） -->
+    <div class="stats-grid" id="statsSection">
+      <div class="stat-card blue"><h3 id="statLabel1">总线索数</h3><div class="number" id="statNum1">0</div></div>
+      <div class="stat-card green"><h3 id="statLabel2">AI 活动库</h3><div class="number" id="statNum2">0</div></div>
+      <div class="stat-card orange"><h3 id="statLabel3">今日入库</h3><div class="number" id="statNum3">0</div></div>
+      <div class="stat-card red"><h3 id="statLabel4">已处理</h3><div class="number" id="statNum4">0</div></div>
+      <div class="stat-card teal"><h3 id="statLabel5">未处理</h3><div class="number" id="statNum5">0</div></div>
+    </div>
+    
+    <!-- Tab 导航：三个池子视图（独立容器） -->
+    <div style="margin-bottom:16px; display:flex; gap:8px;">
+      <button class="btn" id="tab-business" onclick="switchTab('business')" style="padding:8px 20px; background:var(--brand); color:#fff; border-color:var(--brand);">商机池 (有线上评选)</button>
+      <button class="btn" id="tab-verify" onclick="switchTab('verify')" style="padding:8px 20px; background:var(--panel-2); color:var(--text-2); border-color:var(--border);">待核实池 (有活动待确认)</button>
+      <button class="btn" id="tab-resource" onclick="switchTab('resource')" style="padding:8px 20px; background:var(--panel-2); color:var(--text-2); border-color:var(--border);">资源池 (进行中/已结束)</button>
+    </div>
+
+    <!-- 搜索筛选行（精简后） -->
+    <div class="filters">
+      <div style="position:relative; display:inline-flex; align-items:center;">
+        <input type="text" class="filter-input" placeholder="搜索标题/活动名称..." id="searchInput" name="lead_search" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" style="padding-right:32px;">
+        <svg onclick="applyFilters()" style="position:absolute;right:8px;cursor:pointer;width:18px;height:18px;opacity:0.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      </div>
+      <select class="filter-select" id="categoryFilter">
+        <option value="">所有分类</option>
+        <option value="评选">评选</option>
+        <option value="投票">投票</option>
+        <option value="征集">征集</option>
+        <option value="活动">活动</option>
+      </select>
+      <div class="filter-dropdown" id="moreFilterWrap" style="position:relative; display:inline-block;">
+        <button class="btn btn-secondary" onclick="toggleMoreFilter()" style="font-size:14px;">筛选更多 ▾</button>
+        <div id="moreFilterPanel" style="display:none; position:absolute; top:100%; left:0; z-index:999; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 14px; min-width:180px; box-shadow:0 8px 24px rgba(0,0,0,.4); margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-2);padding:6px 0;cursor:pointer;"><input type="checkbox" id="showAllStatus" onchange="applyFilters()"> 所有线索(含已处理)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-2);padding:6px 0;cursor:pointer;"><input type="checkbox" id="showNonLead" onchange="applyFilters()"> 显示广告/非线索</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-2);padding:6px 0;cursor:pointer;"><input type="checkbox" id="showInLibrary" onchange="applyFilters()"> 显示已入库</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-2);padding:6px 0;cursor:pointer;"><input type="checkbox" id="groupEvent" checked onchange="applyFilters()"> 合并同活动</label>
+        </div>
+      </div>
+      <button class="btn btn-secondary" onclick="resetFilters()">重置</button>
+      <button class="btn btn-primary" onclick="applyFilters()">筛选</button>
+    </div>
+
+    <!-- 工具条 -->
+    <div class="filters" style="margin-top:8px; gap:8px; flex-wrap:wrap; align-items:center;">
+      <span id="selectedCount" style="color:var(--text-2); font-size:14px;">未选择任何线索</span>
+      <button class="btn btn-secondary" onclick="selectAll()">全选本页</button>
+      <button class="btn btn-secondary" onclick="invertSelection()">反选</button>
+      <button class="btn btn-secondary" onclick="clearSelection()">取消全选</button>
+      <button class="btn btn-primary" id="batchDoneBtn" onclick="batchDone()" disabled>批量已处理</button>
+      <button class="btn btn-secondary" id="batchTrashBtn" onclick="batchTrash()" disabled style="color:var(--danger);">批量回收站</button>
+      <button class="btn btn-secondary" onclick="reportDuplicate()" title="选中 2 条及以上同一活动/误判的线索，一键反馈"><img src="/static/icons/jiqiren.svg" alt="" style="width:14px;height:14px;vertical-align:middle;margin-right:3px;">反馈误判</button>
+      <!-- 临时优先级快速筛选 -->
+      <span style="display:inline-block; width:1px; height:16px; background:var(--border); margin:0 8px;"></span>
+      <button class="btn lvl-P0" onclick="quickPriority('P0')" style="background:#ef4444; border-color:#ef4444; color:#fff;">P0(紧急)</button>
+      <button class="btn lvl-P1" onclick="quickPriority('P1')" style="background:#fbbf24; border-color:#fbbf24; color:#fff;">P1(高)</button>
+      <button class="btn lvl-P2" onclick="quickPriority('P2')" style="background:#94a3b8; border-color:#94a3b8; color:#fff;">P2(普通)</button>
+      <button class="btn btn-secondary" onclick="clearPriorityFilter()" style="font-size:12px;">清除</button>
+      <span style="flex:1;"></span>
+      <button class="btn btn-secondary" id="trashBtn" onclick="toggleTrashView()"><img src="/static/icons/huishouzhan.svg?v=2" alt="" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;">回收站</button>
+      <button class="btn btn-secondary" onclick="openColConfig()">显示</button>
+    </div>
+
+    <!-- 线索表格 -->
+    <div class="table-container">
+      <div class="table-header">
+        <h2>线索数据</h2>
+        <div class="quick-filters" style="margin:0;">
+          <div class="qf-group"><span class="qf-label">地区</span>
+            <span class="qchip" data-g="region" data-v="全国" onclick="toggleQuick('region','全国')">全国</span>
+            <span class="qchip" data-g="region" data-v="省" onclick="toggleQuick('region','省')">省</span>
+            <span class="qchip" data-g="region" data-v="市" onclick="toggleQuick('region','市')">市</span>
+            <span class="qchip" data-g="region" data-v="县" onclick="toggleQuick('region','县')">县</span>
+          </div>
+          <div class="qf-group"><span class="qf-label">时间</span>
+            <span class="qchip" data-g="days" data-v="1" onclick="toggleQuick('days','1')">今天</span>
+            <span class="qchip" data-g="days" data-v="3" onclick="toggleQuick('days','3')">三天</span>
+            <span class="qchip" data-g="days" data-v="7" onclick="toggleQuick('days','7')">七天</span>
+            <span class="qchip" data-g="days" data-v="15" onclick="toggleQuick('days','15')">半月</span>
+          </div>
+          <div class="qf-group"><span class="qf-label">活动</span>
+            <span class="qchip" data-g="online" onclick="toggleQuick('online')">线上</span>
+            <span class="qchip" data-g="excellent" onclick="toggleQuick('excellent')">优质</span>
+            <span class="qchip" data-g="status" data-v="unprocessed" onclick="toggleQuick('status','unprocessed')">未处理</span>
+            <span class="qchip" data-g="status" data-v="done" onclick="toggleQuick('status','done')">已处理</span>
+          </div>
+          <div class="qf-group"><span class="qf-label">阶段</span>
+            <span class="qchip" data-g="activity_status" data-v="recruiting" onclick="toggleQuick('activity_status','recruiting')">征集报名中</span>
+            <span class="qchip" data-g="activity_status" data-v="进行中" onclick="toggleQuick('activity_status','进行中')">进行中</span>
+          </div>
+        </div>
+        <button class="btn btn-success" onclick="exportData()">导出数据</button>
+      </div>
+      <div class="table-scroll">
+      <table id="leadsTable">
+        <thead>
+          <tr>
+            <th class="col-select" style="width:44px; text-align:center;"><input type="checkbox" id="selectAllHeader" onchange="toggleSelectAll()"></th>
+            <th class="col-id" style="width:50px;">ID</th>
+            <th class="col-keyword">关键词</th>
+            <th class="col-title th-resizable">文章标题 <span class="resize-handle" onmousedown="startResize(event)"></span></th>
+            <th class="col-event_name">活动名称</th>
+            <th class="col-account">公众号</th>
+            <th class="col-channel">渠道</th>
+            <th class="col-online_voting">投票</th>
+            <th class="col-resource">资源等级</th>
+            <th class="col-priority_level">优先级</th>
+            <th class="col-priority_score">分数</th>
+            <th id="thPublish" class="col-publish_time" style="cursor:pointer; user-select:none; min-width:100px;" onclick="toggleSort('publish_time')" title="点击按发布时间排序">发布时间 <span class="sort-arrow"></span></th>
+            <th id="thCollected" class="col-collected_at" style="cursor:pointer; user-select:none; min-width:100px;" onclick="toggleSort('collected_at')" title="点击按采集时间排序">采集时间 <span class="sort-arrow"></span></th>
+            <th class="col-mark_status" style="min-width:52px;">状态</th>
+            <th class="col-llm_status" style="min-width:42px;">清洗</th>
+            <th class="col-notes" style="min-width:52px;">备注</th>
+            <th class="col-actions" style="min-width:100px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTableBody">
+          <!-- 数据将通过 JS 动态加载 -->
+        </tbody>
+      </table>
+      </div>
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <h3>暂无数据</h3>
+        <p>请先添加关键词并执行采集任务</p>
+      </div>
+      
+      <!-- 分页 -->
+      <div class="pagination" id="pagination">
+        <button class="page-btn" onclick="changePage(-1)">上一页</button>
+        <span id="pageInfo" style="padding: 0 20px;">1 / 1</span>
+        <button class="page-btn" onclick="changePage(1)">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 线索标注模态框 -->
+  <div class="modal" id="markModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>标注线索</h2>
+        <button class="close-btn" onclick="closeMarkModal()">&times;</button>
+      </div>
+      <form id="markForm">
+        <input type="hidden" id="markLeadId">
+        
+        <div class="form-group">
+          <label>相关性 *</label>
+          <select id="markRelevance" required onchange="toggleCategoryField()">
+            <option value="">请选择...</option>
+            <option value="true">✓ 相关线索</option>
+            <option value="false">✗ 不相关线索</option>
+          </select>
+        </div>
+        
+        <div class="form-group" id="categoryGroup" style="display: none;">
+          <label>分类 (仅相关线索)</label>
+          <select id="markCategory">
+            <option value="">请选择分类...</option>
+            <option value="评选">评选</option>
+            <option value="投票">投票</option>
+            <option value="征集">征集</option>
+            <option value="活动">活动</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>标签</label>
+          <input type="text" id="markTags" placeholder="输入标签，用逗号分隔 (可选)">
+        </div>
+        
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="markNotes" rows="3" placeholder="备注信息 (可选)"></textarea>
+        </div>
+        
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeMarkModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存标注</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 详情弹窗 -->
+  <div class="modal" id="detailModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>线索详情</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div id="detailBody"></div>
+      <div style="display:flex; gap:14px; justify-content:flex-end; align-items:flex-start; margin-top:12px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="下一条" onclick="detailNextLead()"><img src="/static/icons/xiayitiao.svg" alt="下一条" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">下一条</span></button>
+        <button type="button" class="btn btn-secondary" id="detailLibBtn" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="加入我的活动库" onclick="detailToggleLibrary()"><img src="/static/icons/shoucang.svg" alt="入库" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">入库</span></button>
+        <button type="button" class="btn btn-secondary" id="detailMarkBtn" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="标注已处理" onclick="detailToggleProcessed(this)"><img src="/static/icons/fendou.svg" alt="已处理" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">已处理</span></button>
+        <button type="button" class="btn btn-secondary" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="编辑备注" onclick="openNotesModal(detailLeadId)"><img src="/static/icons/beizhu.svg" alt="备注" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">备注</span></button>
+        <button type="button" class="btn btn-secondary" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="丢弃到回收站" onclick="detailDiscard(this)"><img src="/static/icons/huishouzhan.svg?v=2" alt="回收站" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">回收站</span></button>
+        <button type="button" class="btn btn-secondary" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="复制原文链接" onclick="copyDetailLink()"><img src="/static/icons/fuzhilianjie.svg" alt="复制链接" style="width:20px;height:20px;"><span style="font-size:12px; color:var(--text-3);">复制链接</span></button>
+        <button type="button" class="btn btn-secondary" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px;" title="关闭" onclick="closeDetailModal()"><span style="font-size:20px; line-height:20px; height:20px;">×</span><span style="font-size:12px; color:var(--text-3);">关闭</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备注编辑弹窗（从详情弹窗打开，不关闭详情） -->
+  <div class="modal" id="notesModal">
+    <div class="modal-content" style="width:520px;">
+      <div class="modal-header"><h2>编辑备注</h2><button class="close-btn" onclick="closeNotesModal()">&times;</button></div>
+      <div class="form-group"><label>活动名称</label><input type="text" id="nmEventName" placeholder="活动名称（可手动修改）"></div>
+      <div class="form-group"><label>备注</label><textarea id="nmNotes" rows="5" placeholder="资源处理人员自由补充的备注"></textarea></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:8px;">
+        <button type="button" class="btn btn-primary" onclick="saveNotesAndClose()">保存并关闭</button>
+        <button type="button" class="btn btn-secondary" onclick="closeNotesModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改密码弹窗 -->
+  <div class="modal" id="pwdModal">
+    <div class="modal-content" style="width:420px;">
+      <div class="modal-header"><h2>修改密码</h2><button class="close-btn" onclick="closePwd()">&times;</button></div>
+      <div class="form-group"><label>原密码</label><input type="password" id="pwdOld"></div>
+      <div class="form-group"><label>新密码（至少 6 位）</label><input type="password" id="pwdNew"></div>
+      <div class="form-group"><label>确认新密码</label><input type="password" id="pwdNew2"></div>
+      <div id="pwdMsg" style="color:#fca5a5; font-size:13px; min-height:16px;"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:8px;">
+        <button class="btn btn-primary" onclick="submitChangePwd()">保存</button>
+        <button class="btn btn-secondary" onclick="closePwd()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 同活动来源弹窗 -->
+  <div class="modal" id="sourcesModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="sourcesTitle">同活动来源</h2>
+        <button class="close-btn" onclick="closeSourcesModal()">&times;</button>
+      </div>
+      <div id="sourcesBody"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
+        <button type="button" class="btn btn-secondary" onclick="closeSourcesModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局浮动反馈按钮（任何页面右下角） -->
+  <button id="fabFeedback" onclick="openFeedbackModal()" title="反馈问题/bug"
+    style="position:fixed; right:24px; bottom:24px; z-index:2500; border:none; cursor:pointer;
+           background:var(--brand,#149f90); color:#fff; border-radius:24px; padding:10px 18px;
+           box-shadow:0 6px 20px rgba(0,0,0,.35); font-size:14px; display:inline-flex; align-items:center; gap:6px;">
+    <span style="font-size:16px;">💬</span> 反馈
+  </button>
+
+  <!-- 反馈提交弹窗 -->
+  <div class="modal" id="feedbackModal">
+    <div class="modal-content" style="width:520px;">
+      <div class="modal-header"><h2>提交反馈</h2><button class="close-btn" onclick="closeFeedbackModal()">&times;</button></div>
+      <div class="form-group">
+        <label>问题类型 *</label>
+        <select id="fbCategory">
+          <option value="重复活动">重复活动（同一活动被拆成多条）</option>
+          <option value="漏判">漏判（该是线索却没识别）</option>
+          <option value="误判为广告">误判为广告（有效线索被当广告隐藏）</option>
+          <option value="清洗错误">清洗错误（活动名/状态/地区等抽取错）</option>
+          <option value="需求">需求（希望新增/改进的功能）</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <textarea id="fbDesc" rows="4" placeholder="简要描述问题（重复活动可不填，已自动带上选中线索）"></textarea>
+      </div>
+      <div class="form-group">
+        <label>涉及线索（自动取当前勾选）</label>
+        <div id="fbLeadIds" style="font-size:13px; color:var(--text-2); min-height:18px;">（未勾选）</div>
+      </div>
+      <div id="fbMsg" style="color:#fca5a5; font-size:13px; min-height:16px;"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:8px;">
+        <button type="button" class="btn btn-primary" onclick="submitFeedback()">提交</button>
+        <button type="button" class="btn btn-secondary" onclick="closeFeedbackModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 显示列配置弹窗 -->
+  <div class="modal" id="colConfigModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>显示列</h2>
+        <button class="close-btn" onclick="closeColConfig()">&times;</button>
+      </div>
+      <p style="color:var(--text-3); font-size:13px; margin-bottom:10px;">勾选要显示的列（自动保存在本浏览器）。</p>
+      <div id="colConfigList" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:16px;">
+        <button type="button" class="btn btn-secondary" onclick="resetColConfig()">恢复默认</button>
+        <button type="button" class="btn btn-secondary" onclick="closeColConfig()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出列选择弹窗 -->
+  <div class="modal" id="exportModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="exportTitle">选择导出列</h2>
+        <button class="close-btn" onclick="closeExportModal()">&times;</button>
+      </div>
+      <p style="color:var(--text-3); font-size:13px; margin-bottom:10px;">默认勾选当前显示的列；可自行增减。</p>
+      <div id="exportColList" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:16px;">
+        <button type="button" class="btn btn-secondary" onclick="closeExportModal()">取消</button>
+        <button type="button" class="btn btn-success" onclick="confirmExport()">导出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 悬浮标注面板（活动名称/备注）：非阻塞，可拖拽、可缩放 -->
+  <div class="float-panel" id="annotatePanel">
+    <div class="fp-header" id="fpHeader">
+      <h3 id="fpTitle">编辑补充信息</h3>
+      <button class="close-btn" onclick="closeAnnotatePanel()" title="关闭">&times;</button>
+    </div>
+    <div class="fp-body">
+      <div class="form-group">
+        <label>活动名称</label>
+        <input type="text" id="fpEventName" placeholder="活动名称（可由 AI 生成初稿，可手动修改）">
+      </div>
+      <div class="form-group">
+        <label>备注</label>
+        <textarea id="fpNotes" rows="4" placeholder="资源处理人员自由补充的备注"></textarea>
+      </div>
+    </div>
+    <div class="fp-footer">
+      <label class="fp-export"><input type="checkbox" id="fpExportCheck" onchange="toggleAnnotateExport()"> 加入导出勾选</label>
+      <button class="btn btn-primary" style="margin-left:auto;" onclick="saveAnnotation()">保存</button>
+      <button class="btn btn-secondary" onclick="closeAnnotatePanel()">关闭</button>
+    </div>
+  </div>
+
+  <!-- Toast 提示 -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // 全局变量
+    let currentPage = 1;
+    const pageSize = 20;
+    let allLeadsData = [];
+    let totalLeads = 0;                // 当前筛选条件下的线索总数（分页据此计算总页数）
+    let selectedIds = new Set();       // 当前页选中的 lead.id
+    let sortBy = 'publish_time';        // 默认按发布时间排序
+    let sortDir = 'desc';              // asc|desc
+    // 快捷筛选状态：线上/优/多届 为布尔，地区为互斥单值(全国/省/市)。
+    let quickState = { region: '', days: 0, online: false, excellent: false, status: '', activity_status: '' };
+    // 我的活动库页：按路径预设 in_library 筛选。
+    const LIBRARY_MODE = (window.location.pathname.indexOf('/admin/library') === 0);
+    // AI 活动库页：已清洗且明确有线上投票（online_voting=true），且活动状态非进行中/已结束（voting_not_started=true）。
+    const AI_LIBRARY_MODE = (window.location.pathname.indexOf('/admin/ai_library') === 0);
+    
+    // API 基础地址
+    const API_BASE = window.location.origin + '/api/v1';   // 同源相对地址：域名/IP/隧道访问均正确（切勿写死 localhost）
+
+    // ============ 列显示配置 + 导出列 ============
+    // 可调显示的列（顺序与表格一致）；alwaysOn 不可隐藏。
+    const LEAD_COLS = [
+      {key:'select', label:'选择框', alwaysOn:true},
+      {key:'id', label:'ID'},
+      {key:'keyword', label:'关键词'},
+      {key:'title', label:'文章标题'},
+      {key:'event_name', label:'活动名称'},
+      {key:'account', label:'公众号'},
+      {key:'channel', label:'渠道'},
+      {key:'online_voting', label:'投票'},
+      {key:'resource', label:'资源等级'},
+      {key:'priority_level', label:'优先级'},
+      {key:'priority_score', label:'分数'},
+      {key:'publish_time', label:'发布时间'},
+      {key:'collected_at', label:'采集时间'},
+      {key:'mark_status', label:'状态'},
+      {key:'llm_status', label:'清洗'},
+      {key:'notes', label:'备注'},
+      {key:'actions', label:'操作', alwaysOn:true},
+    ];
+    const COL_STORE_KEY = 'leadsVisibleCols';
+
+    function getVisibleCols() {
+      try {
+        const raw = localStorage.getItem(COL_STORE_KEY);
+        if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) return new Set(arr); }
+      } catch(e) {}
+      return new Set(LEAD_COLS.map(c => c.key));  // 默认全显示
+    }
+    function applyColStyle() {
+      const vis = getVisibleCols();
+      const hidden = LEAD_COLS.filter(c => !c.alwaysOn && !vis.has(c.key)).map(c => `.col-${c.key}`);
+      let st = document.getElementById('colStyle');
+      if (!st) { st = document.createElement('style'); st.id = 'colStyle'; document.head.appendChild(st); }
+      st.textContent = hidden.length ? `${hidden.join(',')}{display:none;}` : '';
+    }
+    function loadColConfig() { applyColStyle(); }
+
+    function openColConfig() {
+      const vis = getVisibleCols();
+      const cols = LEAD_COLS.filter(c => !c.alwaysOn && !(c.key === 'keyword' && window._userRole !== 'super'));
+      document.getElementById('colConfigList').innerHTML = cols.map(c =>
+        `<label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-2);"><input type="checkbox" data-col="${c.key}" ${vis.has(c.key)?'checked':''} onchange="onColToggle()"> ${c.label}</label>`).join('');
+      document.getElementById('colConfigModal').classList.add('show');
+    }
+    function closeColConfig() { document.getElementById('colConfigModal').classList.remove('show'); }
+    function onColToggle() {
+      const checked = Array.from(document.querySelectorAll('#colConfigList input[data-col]:checked')).map(i => i.dataset.col);
+      const keep = new Set(checked);
+      LEAD_COLS.forEach(c => { if (c.alwaysOn) keep.add(c.key); });
+      localStorage.setItem(COL_STORE_KEY, JSON.stringify(Array.from(keep)));
+      applyColStyle();
+    }
+    function resetColConfig() { localStorage.removeItem(COL_STORE_KEY); applyColStyle(); openColConfig(); }
+
+    // 导出列定义（key 与后端 /leads/export 的 cols 对齐）
+    const EXPORT_COLS = [
+      {key:'id', label:'ID', val:l=>l.id ?? ''},
+      {key:'keyword', label:'关键词', val:l=>l.keyword||''},
+      {key:'event_name', label:'活动名称', val:l=>l.event_name||''},
+      {key:'title', label:'标题', val:l=>l.title||''},
+      {key:'article_url', label:'URL', val:l=>l.article_url||''},
+      {key:'account', label:'来源账号', val:l=>l.account||''},
+      {key:'source_channel', label:'渠道', val:l=>channelName(l.source_channel)},
+      {key:'intent_category', label:'意图分类', val:l=>l.intent_category||''},
+      {key:'resource_level', label:'资源质量', val:l=>({excellent:'优',normal:'普',poor:'低'}[l.resource_level]||'')},
+      {key:'activity_region', label:'地区', val:l=>l.activity_region||''},
+      {key:'recurrence', label:'多届', val:l=>l.recurrence||''},
+      {key:'activity_status', label:'活动状态', val:l=>l.activity_status||''},
+      {key:'activity_category', label:'活动类别', val:l=>l.activity_category||''},
+      {key:'is_online_voting', label:'线上投票', val:l=>l.is_online_voting===true?'有':(l.is_online_voting===false?'无':'')},
+      {key:'priority_score', label:'优先级分数', val:l=>l.priority_score ?? ''},
+      {key:'priority_level', label:'优先级等级', val:l=>l.priority_level||''},
+      {key:'mark_status', label:'状态', val:l=>l.mark_status||''},
+      {key:'collected_at', label:'采集时间', val:l=>l.collected_at||l.created_at||''},
+      {key:'publish_time', label:'发布时间', val:l=>l.publish_time||''},
+      {key:'notes', label:'备注', val:l=>l.notes||''},
+      {key:'summary', label:'摘要', val:l=>l.summary||''},
+    ];
+    const DISPLAY_TO_EXPORT = {
+      id:['id'], keyword:['keyword'], event_name:['event_name'], title:['title','article_url'],
+      account:['account'], channel:['source_channel'], online_voting:['is_online_voting'],
+      resource:['resource_level','activity_region','recurrence','activity_status','activity_category'],
+      priority_level:['priority_level'], priority_score:['priority_score'],
+      publish_time:['publish_time'], collected_at:['collected_at'], mark_status:['mark_status'], notes:['notes'],
+    };
+    function defaultExportKeys() {
+      const vis = getVisibleCols();
+      const keys = [];
+      EXPORT_COLS.forEach(ec => {
+        for (const [dk, eks] of Object.entries(DISPLAY_TO_EXPORT)) {
+          if (eks.includes(ec.key) && vis.has(dk)) { keys.push(ec.key); break; }
+        }
+      });
+      return keys.length ? keys : EXPORT_COLS.map(c=>c.key);
+    }
+
+    let _exportMode = 'all';
+    function openExportModal(mode) {
+      _exportMode = mode;
+      const def = new Set(defaultExportKeys());
+      document.getElementById('exportTitle').textContent = mode==='selected' ? `导出选中的 ${selectedIds.size} 条` : `导出当前筛选全部 ${totalLeads} 条`;
+      document.getElementById('exportColList').innerHTML = EXPORT_COLS.map(c =>
+        `<label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-2);"><input type="checkbox" data-ec="${c.key}" ${def.has(c.key)?'checked':''}> ${c.label}</label>`).join('');
+      document.getElementById('exportModal').classList.add('show');
+    }
+    function closeExportModal() { document.getElementById('exportModal').classList.remove('show'); }
+    function confirmExport() {
+      const keys = Array.from(document.querySelectorAll('#exportColList input[data-ec]:checked')).map(i=>i.dataset.ec);
+      if (!keys.length) { showToast('请至少选择一列', 'error'); return; }
+      closeExportModal();
+      if (_exportMode === 'selected') {
+        const rows = allLeadsData.filter(l => selectedIds.has(l.id));
+        const defs = keys.map(k => EXPORT_COLS.find(c=>c.key===k)).filter(Boolean);
+        const csv = '\uFEFF' + [defs.map(d=>csvCell(d.label)).join(','), ...rows.map(l => defs.map(d => csvCell(d.val(l))).join(','))].join('\n');
+        const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `leads_export_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+        showToast(`已导出选中的 ${rows.length} 条`, 'success');
+      } else {
+        const params = new URLSearchParams();
+        const search = document.getElementById('searchInput').value.trim();
+        const category = document.getElementById('categoryFilter').value;
+        if (search) params.append('search', search);
+        const status = document.getElementById('showAllStatus') && document.getElementById('showAllStatus').checked ? 'all' : 'unprocessed';
+        if (status) params.append('status', status);
+        if (category) params.append('category', category);
+        if (LIBRARY_MODE) params.append('in_library', 'true');   // 我的活动库：导出只含自己收藏的
+        if (AI_LIBRARY_MODE) { params.append('online_voting', 'true'); params.append('voting_not_started', 'true'); }   // 导出与列表同口径
+        if (!LIBRARY_MODE && !(document.getElementById('showInLibrary') && document.getElementById('showInLibrary').checked)) params.append('exclude_in_library', 'true');
+        if (quickState.activity_status) params.append('activity_status', quickState.activity_status);
+        if (document.getElementById('showNonLead') && document.getElementById('showNonLead').checked) params.append('include_non_lead','true');
+        if (quickState.region) params.append('region', quickState.region);
+        params.append('cols', keys.join(','));
+        window.location.href = `${API_BASE}/leads/export?${params.toString()}`;
+        showToast('全量导出已开始下载...', 'success');
+      }
+    }
+    
+    // 修改密码
+    function openChangePwd() {
+      ['pwdOld', 'pwdNew', 'pwdNew2'].forEach(i => document.getElementById(i).value = '');
+      document.getElementById('pwdMsg').textContent = '';
+      document.getElementById('pwdModal').classList.add('show');
+    }
+    function closePwd() { document.getElementById('pwdModal').classList.remove('show'); }
+    async function submitChangePwd() {
+      const o = document.getElementById('pwdOld').value;
+      const n = document.getElementById('pwdNew').value;
+      const n2 = document.getElementById('pwdNew2').value;
+      const msg = document.getElementById('pwdMsg');
+      if (n.length < 6) { msg.textContent = '新密码至少 6 位'; return; }
+      if (n !== n2) { msg.textContent = '两次新密码不一致'; return; }
+      try {
+        const r = await fetch(`${API_BASE}/change_password`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: o, new_password: n }),
+        });
+        if (r.ok) { closePwd(); showToast('密码已修改', 'success'); }
+        else { const d = await r.json().catch(() => ({})); msg.textContent = d.detail || '修改失败'; }
+      } catch (e) { msg.textContent = '网络错误，请重试'; }
+    }
+
+    // 加载当前登录用户（顶部显示 + 管理员才显示成员管理）
+    async function loadMe() {
+      try {
+        const r = await fetch(`${API_BASE}/me`);
+        if (!r.ok) { location.href = '/login'; return; }
+        const u = await r.json();
+        window._userRole = u.role;
+        const box = document.getElementById('userBox');
+        if (box) box.textContent = `${u.username}（${u.team_name || '-'}）`;
+        if (u.role === 'admin' || u.role === 'super') {
+          const nv = document.getElementById('navUsers'); if (nv) nv.style.display = '';
+        }
+        // 权限裁剪：运维菜单默认隐藏，仅超管显示
+        if (u.role === 'super') {
+          document.querySelectorAll('[data-super-only]').forEach(el => el.style.display = '');
+        }
+        // 非超管隐藏关键词列（用 body class 确保动态渲染的 td 也被隐藏）
+        if (u.role !== 'super') {
+          document.body.classList.add('hide-keyword');
+        }
+      } catch (e) {}
+    }
+
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      loadMe();
+      // 防浏览器把登录用户名自动填充进搜索框（导致误过滤成“无数据”）：初始清空
+      const _si = document.getElementById('searchInput'); if (_si) _si.value = '';
+      if (LIBRARY_MODE) {
+        document.getElementById('pageTitle').textContent = '我的活动库';
+        document.title = '我的活动库 - 微信搜一搜采集器';
+      }
+      if (AI_LIBRARY_MODE) {
+        document.getElementById('pageTitle').textContent = 'AI活动库';
+        document.title = 'AI活动库 - 微信搜一搜采集器';
+      }
+      // 活动库视图：只留“总数”卡并改名，隐去已标记/待处理/低质量（对收藏库无意义）
+      if (LIBRARY_MODE || AI_LIBRARY_MODE) {
+        const cards = document.querySelectorAll('#statsSection .stat-card');
+        for (let i = 1; i < cards.length; i++) cards[i].style.display = 'none';
+        const h3 = cards[0] && cards[0].querySelector('h3');
+        if (h3) h3.textContent = LIBRARY_MODE ? '我的活动库数量' : 'AI活动库数量';
+      }
+      // 侧边栏高亮当前页（线索列表 vs 我的活动库 vs AI活动库）
+      document.querySelectorAll('.sidebar-menu li[data-page]').forEach(function(li) {
+        const dp = li.dataset.page;
+        const on = (dp === 'library' && LIBRARY_MODE) || (dp === 'ai_library' && AI_LIBRARY_MODE)
+          || (dp === 'leads' && !LIBRARY_MODE && !AI_LIBRARY_MODE);
+        li.classList.toggle('active', on);
+      });
+      applyQuickChipStyles();
+      loadLeads();
+      loadStats();
+      setupSidebarNavigation();
+      updateSortArrows();   // 默认发布时间降序，表头显示箭头
+      loadColConfig();      // 恢复本地保存的显示列
+
+      // 搜索框回车即筛选；状态/分类下拉改变即筛选（无需再点"筛选"按钮）
+      document.getElementById('searchInput').addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') applyFilters();
+      });
+      document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+      document.getElementById('showNonLead').addEventListener('change', applyFilters);
+      document.getElementById('groupEvent').addEventListener('change', applyFilters);
+    });
+    
+    // ==================== Tab 切换逻辑 ====================
+    let _currentFilterMode = 'business';  // 默认商机池
+    
+    function switchTab(mode) {
+      _currentFilterMode = mode;
+      // 更新 Tab 样式
+      document.querySelectorAll('#statsSection + .filters button').forEach(btn => {
+        btn.style.background = 'var(--panel-2)';
+        btn.style.color = 'var(--text-2)';
+      });
+      const activeBtn = document.getElementById(`tab-${mode}`);
+      activeBtn.style.background = 'var(--brand)';
+      activeBtn.style.color = '#fff';
+      
+      // 重置到第一页并重新加载
+      currentPage = 1;
+      loadLeads(1);
+    }
+    
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      _currentFilterMode = mode;
+      // 更新 Tab 样式
+      document.querySelectorAll('#statsSection + .filters button').forEach(btn => {
+        btn.style.background = 'var(--panel-2)';
+        btn.style.color = 'var(--text-2)';
+      });
+      const activeBtn = document.getElementById(`tab-${mode}`);
+      activeBtn.style.background = 'var(--brand)';
+      activeBtn.style.color = '#fff';
+      
+      // 重置到第一页并重新加载
+      currentPage = 1;
+      loadLeads(1);
+    }
+
+    // 加载线索数据（联动后端筛选：搜索关键词 / 状态 / 意图分类）
+    async function loadLeads(page = 1) {
+      const tbody = document.getElementById('leadsTableBody');
+      const emptyState = document.getElementById('emptyState');
+
+      try {
+        currentPage = page;
+        selectedIds.clear();           // 切换分页清空选中，避免跨页不一致
+        updateSelectedCountDisplay();
+        const offset = (page - 1) * pageSize;
+        const params = new URLSearchParams({ limit: pageSize, offset: offset });
+
+        const search = document.getElementById('searchInput').value.trim();
+        const category = document.getElementById('categoryFilter').value;
+        if (search) params.append('search', search);
+        // 状态：回收站模式优先；然后快捷chip；否则看“筛选更多”里的“所有线索”勾选；默认未处理
+        const effStatus = _trashMode ? 'trash' : (quickState.status || (document.getElementById('showAllStatus') && document.getElementById('showAllStatus').checked ? 'all' : 'unprocessed'));
+        if (effStatus) params.append('status', effStatus);
+        if (category) params.append('category', category);
+        if (quickState.online || AI_LIBRARY_MODE) params.append('online_voting', 'true');
+        if (AI_LIBRARY_MODE) params.append('voting_not_started', 'true');   // AI活动库：排除活动状态进行中/已结束
+        const effRegion = quickState.region || '';
+        if (effRegion) params.append('region', effRegion);
+        if (quickState.excellent) params.append('resource_level', 'excellent');
+        if (quickState.days) params.append('days', quickState.days);
+        if (quickState.activity_status) params.append('activity_status', quickState.activity_status);
+        if (LIBRARY_MODE) params.append('in_library', 'true');
+        // 漏斗逻辑：非活动库视图默认排除已入库（仅当前用户），勾"显示已入库"可回看
+        if (!LIBRARY_MODE && !(document.getElementById('showInLibrary') && document.getElementById('showInLibrary').checked)) {
+          params.append('exclude_in_library', 'true');
+        }
+        if (document.getElementById('showNonLead') && document.getElementById('showNonLead').checked) params.append('include_non_lead', 'true');
+        if (document.getElementById('groupEvent') && !document.getElementById('groupEvent').checked) params.append('group_by_event', 'false');
+        // 视图模式过滤（双轨制架构）
+        params.append('filter_mode', _currentFilterMode);
+        if (sortBy) { params.append('sort_by', sortBy); params.append('sort_dir', sortDir); }
+        // 临时优先级快速筛选：只展示 P0/P1/P2
+        if (_priorityFilter) {
+          params.append('priority_level_filter', _priorityFilter);
+        }
+
+        const response = await fetch(`${API_BASE}/leads/?${params.toString()}`);
+        
+        if (response.status === 401) { location.href = '/login'; return; }  // 会话失效→跳登录（而非“无数据”）
+        if (!response.ok) throw new Error('加载失败');
+        
+        const data = await response.json();
+        allLeadsData = data.data || [];
+        
+        if (allLeadsData.length === 0) {
+          tbody.style.display = 'none';
+          emptyState.style.display = 'block';
+        } else {
+          tbody.style.display = 'table-row-group';
+          emptyState.style.display = 'none';
+          renderTable(allLeadsData);
+        }
+        
+        // 更新分页
+        updatePagination(data.total, page);
+        // 活动库/AI活动库：总数卡显示本视图过滤后的数量(而非公海全量)
+        if (LIBRARY_MODE || AI_LIBRARY_MODE) {
+          const el = document.getElementById('totalLeads'); if (el) el.textContent = data.total;
+        }
+        
+      } catch (error) {
+        console.error('加载线索失败:', error);
+        showToast('加载数据失败，请刷新页面重试', 'error');
+        emptyState.style.display = 'block';
+      }
+    }
+    
+    // 点击表头切换排序（服务端排序，覆盖全部分页）；同列再点切换升/降序。
+    function toggleSort(col) {
+      if (sortBy === col) {
+        sortDir = (sortDir === 'desc') ? 'asc' : 'desc';
+      } else {
+        sortBy = col; sortDir = 'desc';
+      }
+      updateSortArrows();
+      loadLeads(1);
+    }
+
+    // 刷新表头排序箭头指示
+    function updateSortArrows() {
+      const map = { publish_time: 'thPublish', collected_at: 'thCollected' };
+      Object.keys(map).forEach(k => {
+        const th = document.getElementById(map[k]);
+        if (!th) return;
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = (sortBy === k) ? (sortDir === 'asc' ? '▲' : '▼') : '';
+      });
+    }
+
+    // 渲染表格
+    function renderTable(data) {
+      const tbody = document.getElementById('leadsTableBody');
+      tbody.innerHTML = '';
+      
+      data.forEach(lead => {
+        const isSelected = selectedIds.has(lead.id);
+        const row = document.createElement('tr');
+        
+        const statusBadge = getSTATUSBadge(lead.mark_status || 'unmarked');
+        const level = lead.priority_level || '-';
+        const levelBadge = level === '-' ? '-' : `<span class="badge lvl-${level}">${level}</span>`;
+
+        row.innerHTML = `
+          <td class="col-select" style="text-align:center;">
+            <input type="checkbox" data-lead-id="${lead.id || 0}" ${isSelected ? 'checked' : ''} onchange="onRowToggle(${lead.id || 0})">
+          </td>
+          <td class="col-id">${lead.id || '-'}</td>
+          <td class="col-keyword">${escapeHtml(lead.keyword || '-')}</td>
+          <td class="col-title" style="min-width:200px; white-space:normal; word-break:break-word;">
+            ${titleCell(lead)}
+          </td>
+          <td class="col-event_name ${lead.event_name ? '' : 'empty'}" title="${escapeHtml(lead.event_name || '点击查看详情')}"><span class="evname" onclick="openDetailModal(${lead.id || 0})">${escapeHtml(lead.event_name || '—')}</span>${statusTag(lead.activity_status)}${groupBadge(lead)}</td>
+          <td class="col-account" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(lead.account || '')}">${escapeHtml(lead.account || '-')}</td>
+          <td class="col-channel">${channelIcons(lead)}</td>
+          <td class="col-online_voting">${onlineVotingBadge(lead)}</td>
+          <td class="col-resource">${resourceBadges(lead)}</td>
+          <td class="col-priority_level">${levelBadge}</td>
+          <td class="col-priority_score">${lead.priority_score ?? '-'}</td>
+          <td class="col-publish_time">${formatDate(lead.publish_time)}</td>
+          <td class="col-collected_at">${collectedCell(lead)}</td>
+          <td class="col-mark_status">${statusBadge}</td>
+          <td class="col-llm_status">${getLLMStatusBadge(lead.llm_status)}</td>
+          <td class="col-notes cell-ellip ${lead.notes ? '' : 'empty'}" title="${escapeHtml(lead.notes || '点击填写备注')}" onclick="openAnnotatePanel(${lead.id || 0})">${escapeHtml(lead.notes || '—')}</td>
+          <td class="col-actions" style="white-space:nowrap;">
+            ${actionButtons(lead)}
+          </td>
+        `;
+        
+        tbody.appendChild(row);
+      });
+    }
+    
+    // 行复选框切换
+    function onRowToggle(leadId) {
+      if (selectedIds.has(leadId)) selectedIds.delete(leadId);
+      else selectedIds.add(leadId);
+      updateSelectedCountDisplay();
+      syncHeaderCheckbox();
+    }
+    
+    // 同步表头全选框状态
+    function syncHeaderCheckbox() {
+      const header = document.getElementById('selectAllHeader');
+      if (!header || allLeadsData.length === 0) return;
+      header.checked = selectedIds.size === allLeadsData.length;
+      header.indeterminate = selectedIds.size > 0 && selectedIds.size < allLeadsData.length;
+    }
+    
+    // 更新选中数显示
+    function updateSelectedCountDisplay() {
+      const el = document.getElementById('selectedCount');
+      if (!el) return;
+      if (selectedIds.size === 0) {
+        el.textContent = '未选择任何线索';
+      } else {
+        el.textContent = `已选择 ${selectedIds.size} 条`; // 当前页数量
+      }
+      const bd = document.getElementById('batchDoneBtn');
+      const bt = document.getElementById('batchTrashBtn');
+      if (bd) bd.disabled = (selectedIds.size === 0);
+      if (bt) bt.disabled = (selectedIds.size === 0);
+    }
+    
+    // 表头全选框点击
+    function toggleSelectAll() {
+      const header = document.getElementById('selectAllHeader');
+      if (!header) return;
+      const checked = header.checked;
+      if (checked) {
+        allLeadsData.forEach(l => { if(l.id) selectedIds.add(l.id); });
+      } else {
+        selectedIds.clear();
+      }
+      updateSelectedCountDisplay();
+      // 重渲染表格以更新复选框状态
+      renderTable(allLeadsData);
+      syncHeaderCheckbox();
+    }
+    
+    // 全选本页按钮
+    function selectAll() {
+      allLeadsData.forEach(l => { if(l.id) selectedIds.add(l.id); });
+      updateSelectedCountDisplay();
+      renderTable(allLeadsData);
+      syncHeaderCheckbox();
+    }
+    
+    // 反选按钮
+    function invertSelection() {
+      allLeadsData.forEach(l => {
+        if(l.id) {
+          if(selectedIds.has(l.id)) selectedIds.delete(l.id);
+          else selectedIds.add(l.id);
+        }
+      });
+      updateSelectedCountDisplay();
+      renderTable(allLeadsData);
+      syncHeaderCheckbox();
+    }
+    
+    // 取消全选
+    function clearSelection() {
+      selectedIds.clear();
+      updateSelectedCountDisplay();
+      renderTable(allLeadsData);
+      syncHeaderCheckbox();
+    }
+    
+    // 渠道标识 → 友好名（保留原始值用于对接 OA 系统）
+    const CHANNEL_NAMES = {
+      wechat_pc: '微信搜一搜(PC)',
+      weixin_mobile: '微信搜一搜(手机)',
+      wechat_mobile: '微信搜一搜(手机)',
+      sogou_weixin: '搜狗微信',
+      sogou_wap: '搜狗微信',
+      baidu_news: '百度新闻',
+    };
+    function channelName(ch) {
+      if (!ch) return '-';
+      return CHANNEL_NAMES[ch] || ch;
+    }
+
+    // 渠道图标（本地静态资源）：同一文章多渠道则并列多个图标。
+    const CHANNEL_ICONS = {
+      wechat_pc: '/static/icons/wechat_pc.png',
+      weixin_mobile: '/static/icons/wechat_pc.png',
+      wechat_mobile: '/static/icons/wechat_pc.png',
+      sogou_weixin: '/static/icons/sogou_weixin.png',
+      sogou_wap: '/static/icons/sogou_weixin.png',
+    };
+    // 优先用 channels 数组（多渠道），回退到 source_channel 单值；按图标去重。
+    function channelIcons(lead) {
+      let chs = [];
+      if (Array.isArray(lead.channels) && lead.channels.length) chs = lead.channels;
+      else if (lead.source_channel) chs = [lead.source_channel];
+      if (!chs.length) return '-';
+      const seen = new Set();
+      const parts = [];
+      chs.forEach(ch => {
+        const icon = CHANNEL_ICONS[ch];
+        const name = CHANNEL_NAMES[ch] || ch;
+        const key = icon || name;
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (icon) parts.push(`<img class="channel-icon" src="${icon}" alt="${name}" title="${name}">`);
+        else parts.push(`<span class="badge badge-info">${name}</span>`);
+      });
+      return parts.join('') || '-';
+    }
+    // 筛选更多下拉面板开关
+    function toggleMoreFilter() {
+      const p = document.getElementById('moreFilterPanel');
+      p.style.display = (p.style.display === 'none') ? 'block' : 'none';
+    }
+    // 点其他地方关闭下拉
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('moreFilterWrap');
+      if (wrap && !wrap.contains(e.target)) { document.getElementById('moreFilterPanel').style.display = 'none'; }
+    });
+
+    // 资源质量徐章：优(提醒色,无★)/普/低(危险色)。
+    function qualityBadge(rl) {
+      if (rl === 'excellent') return '<span class="badge badge-warning" title="资源质量：优">优</span>';
+      if (rl === 'poor') return '<span class="badge badge-danger" title="资源质量：低（信息不全/疑似广告）">低</span>';
+      return '<span class="badge res-normal" title="资源质量：普">普</span>';
+    }
+
+    // 活动阶段角标（显示在活动名称旁）
+    function statusTag(s) {
+      if (!s || s === '已结束') return '';
+      if (s === '征集中' || s === '报名中')
+        return ' <span class="badge badge-info" style="font-size:11px;padding:1px 5px;vertical-align:middle;">征集报名中</span>';
+      if (s === '进行中')
+        return ' <span class="badge badge-success" style="font-size:11px;padding:1px 5px;vertical-align:middle;">进行中</span>';
+      return ' <span class="badge badge-info" style="font-size:11px;padding:1px 5px;vertical-align:middle;">' + escapeHtml(s) + '</span>';
+    }
+
+    // 列宽度拖拽（标题列）
+    function startResize(e) {
+      e.preventDefault();
+      const th = e.target.parentElement;
+      const startX = e.clientX;
+      const startW = th.offsetWidth;
+      function onMove(ev) { th.style.width = Math.max(80, startW + ev.clientX - startX) + 'px'; }
+      function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    // 批量已处理
+    async function batchDone() {
+      if (!selectedIds.size) return;
+      if (!confirm(`确定将选中的 ${selectedIds.size} 条标为“已处理”？`)) return;
+      try {
+        await fetch(`${API_BASE}/leads/batch/status`, {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ ids: [...selectedIds], status: 'done' })
+        });
+        showToast(`已批量标记 ${selectedIds.size} 条为“已处理”`, 'success');
+      } catch(e) { showToast('批量操作失败', 'error'); }
+      selectedIds.clear();
+      loadLeads(currentPage);
+    }
+
+    // 批量回收站（弹选：仅隐藏 / 标为无效）
+    async function batchTrash() {
+      if (!selectedIds.size) return;
+      const choice = confirm(`将选中的 ${selectedIds.size} 条移入回收站。\n\n点“确定”= 标为无效（供 AI 学习）\n点“取消”后可改用“仅隐藏”。`);
+      const payload = { ids: [...selectedIds], status: 'trash' };
+      if (choice) payload.human_label = '无效';
+      else {
+        if (!confirm('仅隐藏（不标记为无效）？')) return;
+      }
+      try {
+        await fetch(`${API_BASE}/leads/batch/status`, {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        showToast(`已批量移入回收站 ${selectedIds.size} 条`, 'success');
+      } catch(e) { showToast('批量操作失败', 'error'); }
+      selectedIds.clear();
+      loadLeads(currentPage);
+    }
+
+    // 资源等级多标签：质量(优/普/低) + 地区 + 多届三态 + 活动状态 + 类别（均 LLM 判定）。
+    function resourceBadges(lead) {
+      const parts = [qualityBadge(lead.resource_level)];
+      if (lead.activity_region) parts.push(`<span class="badge badge-info" title="活动地区级别">${escapeHtml(lead.activity_region)}</span>`);
+      if (lead.recurrence) parts.push(`<span class="badge badge-info" title="届次">${escapeHtml(lead.recurrence)}</span>`);
+      const cat = (lead.activity_category || '').trim();
+      if (cat) parts.push(`<span class="badge badge-warning" title="活动类别">${escapeHtml(cat)}</span>`);
+      return parts.join(' ');
+    }
+
+    // 标题单元格：有原链→新窗口打开；无链(如搜狗无永久链)→点击看详情并提示。
+    function titleCell(lead) {
+      const t = escapeHtml(lead.title || '-');
+      const url = lead.article_url || '';
+      // 搜狗渠道无可用外链（sn 取不到、sogou 跳转链会话绑定）——正文已入库，点标题看详情。
+      const sogou = (lead.source_channel === 'sogou_weixin');
+      if (url && !sogou) {
+        return `<a class="lead-title" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="在新窗口打开原文：${escapeHtml(url)}">${t}</a>`;
+      }
+      const tip = sogou ? '搜狗来源无外部可跳链接，正文已入库，点击看详情' : '无永久链接，点击看详情';
+      return `<span class="lead-title" title="${tip}" onclick="openDetailModal(${lead.id || 0})">${t}</span>`;
+    }
+
+    // 采集时间单元格：优先真实采集时间 collected_at；历史行无则回退入库时间并标注。
+    function collectedCell(lead) {
+      if (lead.collected_at) return formatDate(lead.collected_at);
+      if (lead.created_at) return `<span title="历史数据无真实采集时间，此为入库时间" style="color:var(--text-3);">${formatDate(lead.created_at)}*</span>`;
+      return '-';
+    }
+
+    // 线上投票徐章：true→✓(绿)，悬停看链接；false→—；null(未清洗)→—。
+    function onlineVotingBadge(lead) {
+      if (lead.is_online_voting === true) {
+        const url = lead.online_voting_url || '';
+        if (url) {
+          return `<a href="${escapeHtml(url)}" target="_blank" class="badge badge-success" title="${escapeHtml(url)}">有</a>`;
+        }
+        return '<span class="badge badge-success" title="有线上投票环节（未提取到直接链接）">有</span>';
+      }
+      if (lead.is_online_voting === false) return '<span class="badge res-normal">无</span>';
+      return '<span style="color:var(--text-3);">—</span>';
+    }
+
+    // 详情弹窗的线上投票展示（含可点击链接）
+    function onlineVotingDetail(lead) {
+      if (lead.is_online_voting === true) {
+        const url = lead.online_voting_url || '';
+        const link = url ? `：<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(url)}</a>` : '（未提取到直接链接）';
+        return `✅ 支持线上投票/网络评选${link}`;
+      }
+      if (lead.is_online_voting === false) return '无线上投票环节';
+      return '—（尚未经大模型清洗）';
+    }
+
+    // 同活动来源徐章：group_count>1 时显示“跨公众号转载数”，点击展开各来源。
+    function groupBadge(lead) {
+      const n = Number(lead.group_count || 1);
+      if (n <= 1) return '';
+      return `<span class="badge badge-info" style="margin-left:6px; cursor:pointer;" title="同一活动被 ${n} 个来源转载，点击查看" onclick="event.stopPropagation(); openSources(${lead.id || 0})">🔗 ${n} 源</span>`;
+    }
+
+    // 打开同活动来源弹窗
+    async function openSources(leadId) {
+      const body = document.getElementById('sourcesBody');
+      body.innerHTML = '<p style="color:var(--text-3);">加载中…</p>';
+      document.getElementById('sourcesModal').classList.add('show');
+      try {
+        const resp = await fetch(`${API_BASE}/leads/${leadId}/sources`);
+        const j = await resp.json();
+        const rows = j.data || [];
+        document.getElementById('sourcesTitle').textContent = `同活动来源：${j.event_name || ''}（${j.count || rows.length} 个）`;
+        if (!rows.length) { body.innerHTML = '<p style="color:var(--text-3);">无来源</p>'; return; }
+        body.innerHTML = `<table style="width:100%; border-collapse:collapse;">
+          <thead><tr><th style="text-align:left; padding:6px;">公众号</th><th style="text-align:left; padding:6px;">标题</th><th style="text-align:left; padding:6px;">采集时间</th><th style="padding:6px;">链接</th></tr></thead>
+          <tbody>${rows.map(r => `<tr>
+            <td style="padding:6px; border-top:1px solid var(--border);">${escapeHtml(r.account || '-')}</td>
+            <td style="padding:6px; border-top:1px solid var(--border); max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.title||'')}">${escapeHtml(r.title || '-')}</td>
+            <td style="padding:6px; border-top:1px solid var(--border); white-space:nowrap;">${formatDate(r.collected_at)}</td>
+            <td style="padding:6px; border-top:1px solid var(--border); text-align:center;">${r.article_url ? `<a href="${escapeHtml(r.article_url)}" target="_blank" rel="noopener">打开</a>` : '—'}</td>
+          </tr>`).join('')}</tbody></table>`;
+      } catch (e) {
+        body.innerHTML = '<p style="color:var(--danger);">加载失败</p>';
+      }
+    }
+    function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('show'); }
+
+    // 清洗正文杂质 + 段落化，提升详情页可读性（去掉微信文末互动/纯数字/页脚）
+    function renderReadableContent(raw) {
+      const text = (raw || '').trim();
+      if (!text) return '<div class="content-box content-empty">本条未采到正文（采集时未进详情页），可点下方原文链接查看。</div>';
+      const junkRe = /^(写留言|留言|点赞|在看|分享|收藏|阅读|喜欢作者|赞赏|轻触阅读原文|阅读原文|继续滑动看下一个|已同步到看一看|发消息|微信扫一扫|长按识别二维码|向上滑动|预览时标签不可点|视频号|图片|广告|人赞过)$/;
+      const lines = text.split(/\r?\n/).map(s => s.trim());
+      const kept = [];
+      for (const ln of lines) {
+        if (!ln) { if (kept.length && kept[kept.length-1] !== '') kept.push(''); continue; }
+        if (/^\d{1,6}$/.test(ln)) continue;          // 纯数字行（点赞/在看/留言数）
+        if (junkRe.test(ln)) continue;                // 页脚互动词
+        kept.push(ln);
+      }
+      while (kept.length && kept[0] === '') kept.shift();
+      while (kept.length && kept[kept.length-1] === '') kept.pop();
+      if (!kept.length) return '<div class="content-box content-empty">正文清洗后为空。</div>';
+      const html = kept.map(ln => ln === '' ? '' : `<p style="margin:0 0 10px; line-height:1.8;">${escapeHtml(ln)}</p>`).join('');
+      return `<div class="content-box">${html}</div>`;
+    }
+
+    // 打开详情弹窗：标题/分类 + 正文 + 原文链接（已去摘要/评分明细）
+    let detailLeadId = null;
+    // 主办方结构化联系方式 → 一行文本（优先 organizer_contact，回退 raw 的 contact_person/contact_info）
+    function organizerContactText(oc, raw) {
+      if (oc && typeof oc === 'object') {
+        const parts = [];
+        if (oc.persons && oc.persons.length) parts.push(oc.persons.join('、'));
+        else if (oc.person) parts.push(oc.person);
+        ['phone', 'email', 'wechat', 'url', 'other'].forEach(k => {
+          if (oc[k] && oc[k].length) parts.push(oc[k].join('，'));
+        });
+        if (parts.length) return parts.join(' ｜ ');
+      }
+      const cp = (raw && raw.contact_person) || '';
+      const ci = raw && Array.isArray(raw.contact_info) ? raw.contact_info.join('，') : ((raw && raw.contact_info) || '');
+      return [cp, ci].filter(Boolean).join(' ｜ ');
+    }
+
+    // 交互点②：主办方命中主办方库时，把详情里的主办方名升级为可点击链接（跳档案页）。
+    // 主办方库仅超管可见，故只对超管生成可点击链接；其他角色保持纯文本。
+    async function enhanceOrganizerLink(name) {
+      if (!(window.__ME__ && window.__ME__.role === 'super')) return;
+      try {
+        const r = await fetch(`${API_BASE}/organizers/lookup?name=${encodeURIComponent(name)}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d && d.id) {
+          const el = document.getElementById('detailOrgName');
+          if (el) el.innerHTML = `<a href="/admin/organizers?id=${d.id}" target="_blank" style="color:var(--brand-hover);text-decoration:none;" title="在主办方库查看该主办方">${escapeHtml(name)} 🔗</a>`;
+        }
+      } catch (e) { /* 查不到就保持纯文本 */ }
+    }
+
+    function openDetailModal(leadId) {
+      const lead = allLeadsData.find(l => l.id === leadId);
+      if (!lead) { showToast('未找到该线索', 'error'); return; }
+      detailLeadId = leadId;
+      const body = document.getElementById('detailBody');
+
+      const url = lead.article_url || '';
+      const sogou = (lead.source_channel === 'sogou_weixin');
+      const urlHtml = (url && !sogou)
+        ? `<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(url)}</a>`
+        : (sogou ? '<span class="value" style="color:var(--text-3);">搜狗来源无可用外链（正文已入库，见上方）</span>' : '<span class="value">-</span>');
+
+      // 正文内容：清洗微信页脚杂质 + 段落排版（本地已存，不依赖会失效的原文链接）
+      const contentHtml = renderReadableContent(lead.content);
+      const fb = Number(lead.llm_feedback || 0);
+      const fbUp = fb === 1 ? 'badge-success' : 'res-normal';
+      const fbDown = fb === -1 ? 'badge-danger' : 'res-normal';
+      // 从 scoring_breakdown.raw 取 LLM 采到的主办方/联系方式
+      let _sb = lead.scoring_breakdown;
+      if (typeof _sb === 'string') { try { _sb = JSON.parse(_sb); } catch (e) { _sb = null; } }
+      const _raw = (_sb && _sb.raw) ? _sb.raw : {};
+      // 主办方：优先用清洗落库的结构化列，回退 scoring_breakdown.raw
+      const organizer = lead.organizer_name || _raw.organizer || '';
+      const organizerRegion = lead.organizer_region || _raw.organizer_region || '';
+      const votingPlatform = lead.voting_platform || _raw.voting_platform || '';
+      const contactLine = organizerContactText(lead.organizer_contact, _raw);
+      const reasoningText = String(lead.llm_reasoning || '-').replace(/^\s*\[LLM\]\s*/, '');
+
+      body.innerHTML = `
+        <div class="detail-section"><div class="label">标题</div><div class="value">${(url && !sogou) ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="点击在新窗口打开原文">${escapeHtml(lead.title || '-')}</a>` : escapeHtml(lead.title || '-')}${sogou ? ' <span style="color:var(--text-3); font-size:12px;">(搜狗来源无外链，正文见下)</span>' : ''}</div></div>
+        <div class="detail-section"><div class="label">关键词 ｜ 意图分类 ｜ 优先级</div>
+          <div class="value">${escapeHtml(lead.keyword || '-')} ｜ ${escapeHtml(lead.intent_category || '-')} ｜ ${escapeHtml(lead.priority_level || '-')}（${lead.priority_score ?? '-'} 分）</div></div>
+        <div class="detail-section"><div class="label">资源等级 ｜ 线上投票</div>
+          <div class="value">${resourceBadges(lead)} &nbsp;｜&nbsp; ${onlineVotingDetail(lead)}</div></div>
+        <div class="detail-section"><div class="label">来源账号 ｜ 渠道 ｜ 发布时间 ｜ 采集时间</div>
+          <div class="value">${escapeHtml(lead.account || '-')} ｜ ${channelName(lead.source_channel)} ｜ ${formatDate(lead.publish_time)} ｜ ${collectedCell(lead)}</div></div>
+        <div class="detail-section"><div class="label">正文内容</div>${contentHtml}</div>
+        <div class="detail-section"><div class="label">主办方</div><div class="value"><span id="detailOrgName">${organizer ? escapeHtml(organizer) : '—'}</span>${organizerRegion ? ` <span class="badge badge-info">${escapeHtml(organizerRegion)}</span>` : ''}</div></div>
+        <div class="detail-section"><div class="label">主办方联系方式</div><div class="value">${contactLine ? escapeHtml(contactLine) : '—'}</div></div>
+        <div class="detail-section"><div class="label">评选系统</div><div class="value">${votingPlatform ? escapeHtml(votingPlatform) : '—'}</div></div>
+        <div class="detail-section"><div class="label">评分理由</div><div class="value"><img src="/static/icons/jiqiren.svg" alt="小M" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;">${escapeHtml(reasoningText)}</div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <span style="color:var(--text-3); font-size:12px;">对小M的判定的评价：</span>
+            <button class="btn ${fbUp}" style="padding:2px 10px; font-size:12px;" onclick="llmFeedback(1)">👍 赞成</button>
+            <button class="btn ${fbDown}" style="padding:2px 10px; font-size:12px;" onclick="llmFeedback(-1)">👎 反对</button>
+          </div></div>
+        <div class="detail-section"><div class="label">人工分型（搜集人员评价，供 AI 学习；再点取消）</div>
+          <div class="value" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">${humanLabelButtons(lead)}</div></div>
+      `;
+      const libBtn = document.getElementById('detailLibBtn');
+      if (libBtn) { libBtn.title = lead.in_library ? '已在活动库(点击移出)' : '加入我的活动库'; libBtn.style.background = lead.in_library ? 'rgba(251,191,36,.28)' : ''; }
+      const markBtn = document.getElementById('detailMarkBtn');
+      if (markBtn) { markBtn.title = lead.mark_status === 'done' ? '改回未处理' : '标注已处理'; markBtn.style.background = lead.mark_status === 'done' ? 'rgba(20,159,144,.28)' : ''; }
+      document.getElementById('detailModal').classList.add('show');
+      if (organizer) enhanceOrganizerLink(organizer);
+    }
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.remove('show');
+    }
+
+    // 下一条：跳到当前页下一条详情；到本页末尾则自动翻到下一页第一条。
+    async function detailNextLead() {
+      if (detailLeadId == null) return;
+      const idx = allLeadsData.findIndex(l => l.id === detailLeadId);
+      if (idx >= 0 && idx + 1 < allLeadsData.length) {
+        openDetailModal(allLeadsData[idx + 1].id);
+        return;
+      }
+      const totalPages = Math.ceil((totalLeads || 0) / pageSize) || 1;
+      if (currentPage < totalPages) {
+        await loadLeads(currentPage + 1);
+        if (allLeadsData[0]) openDetailModal(allLeadsData[0].id);
+      } else {
+        showToast('已是最后一条', 'info');
+      }
+    }
+
+    // 详情弹窗底部动作（均作用于 detailLeadId）
+    function detailEdit() {
+      if (detailLeadId == null) return;
+      closeDetailModal();
+      openAnnotatePanel(detailLeadId);
+    }
+    function detailToggleProcessed(btn) {
+      if (detailLeadId == null) return;
+      const lead = allLeadsData.find(l => l.id === detailLeadId); if (!lead) return;
+      if (lead.mark_status === 'done') {
+        showInlineConfirm(btn, '改回“未处理”？', () => {
+          setLeadStatus(detailLeadId, 'pending_followup', '已改为未处理');
+          lead.mark_status = 'pending_followup';
+        });
+      } else {
+        setLeadStatus(detailLeadId, 'done', '已标为已处理');   // 不关闭详情，便于继续查看
+        lead.mark_status = 'done';
+      }
+    }
+    function detailDiscard(btn) {
+      if (detailLeadId == null) return;
+      showInlineConfirm(btn, '移入回收站？', () => {
+        setLeadStatus(detailLeadId, 'trash', '已移入回收站'); closeDetailModal();
+      });
+    }
+    // 就近确认气泡：锤定到触发按钮旁边，避免原生 confirm 弹在页面顶部太远。
+    function showInlineConfirm(anchor, text, onOk) {
+      document.querySelectorAll('.inline-confirm').forEach(e => e.remove());
+      const box = document.createElement('div');
+      box.className = 'inline-confirm';
+      box.style.cssText = 'position:fixed; z-index:3000; display:flex; gap:6px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 8px; box-shadow:0 6px 20px rgba(0,0,0,.35); font-size:13px; color:var(--text);';
+      const span = document.createElement('span'); span.textContent = text; box.appendChild(span);
+      const ok = document.createElement('button'); ok.textContent = '确定';
+      ok.style.cssText = 'border:none; border-radius:6px; padding:4px 10px; cursor:pointer; background:#ef4444; color:#fff;';
+      const no = document.createElement('button'); no.textContent = '取消';
+      no.style.cssText = 'border:1px solid var(--border); border-radius:6px; padding:4px 10px; cursor:pointer; background:var(--panel-2); color:var(--text-2);';
+      box.appendChild(ok); box.appendChild(no);
+      document.body.appendChild(box);
+      const r = anchor.getBoundingClientRect();
+      let top = r.top - box.offsetHeight - 8;
+      if (top < 8) top = r.bottom + 8;                       // 上方空间不够则放下方
+      let left = Math.min(r.left, window.innerWidth - box.offsetWidth - 8);
+      box.style.left = Math.max(8, left) + 'px';
+      box.style.top = top + 'px';
+      ok.onclick = () => { box.remove(); onOk(); };
+      no.onclick = () => box.remove();
+      setTimeout(() => {
+        document.addEventListener('click', function h(e) {
+          if (!box.contains(e.target) && e.target !== anchor) { box.remove(); document.removeEventListener('click', h); }
+        });
+      }, 0);
+    }
+    async function detailToggleLibrary() {
+      if (detailLeadId == null) return;
+      const lead = allLeadsData.find(l => l.id === detailLeadId); if (!lead) return;
+      const target = !(lead.in_library === true);
+      try {
+        const r = await fetch(`${API_BASE}/leads/${detailLeadId}/library`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ in_library: target }),
+        });
+        if (!r.ok) throw new Error('fail');
+        lead.in_library = target;
+        const lb = document.getElementById('detailLibBtn');
+        if (lb) { lb.title = target ? '已在活动库(点击移出)' : '加入我的活动库'; lb.style.background = target ? 'rgba(251,191,36,.28)' : ''; }
+        showToast(target ? '已加入我的活动库' : '已移出活动库', 'success');
+        // 漏斗：非活动库视图中入库后自动从列表移除（默认排除已入库）
+        if (!LIBRARY_MODE && target && !(document.getElementById('showInLibrary') && document.getElementById('showInLibrary').checked)) {
+          closeDetailModal(); loadLeads(currentPage);
+        } else if (LIBRARY_MODE && !target) { closeDetailModal(); loadLeads(currentPage); }
+      } catch (e) { showToast('操作失败，请重试', 'error'); }
+    }
+
+    // 操作列五角星：切换加入/移出我的活动库，刷新行星标高亮。
+    async function toggleLibraryById(id) {
+      const lead = allLeadsData.find(l => l.id === id); if (!lead) return;
+      const target = !(lead.in_library === true);
+      try {
+        const r = await fetch(`${API_BASE}/leads/${id}/library`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ in_library: target }),
+        });
+        if (!r.ok) throw new Error('fail');
+        lead.in_library = target;
+        showToast(target ? '已加入我的活动库' : '已移出活动库', 'success');
+        // 漏斗：非活动库视图中入库后刷新列表（默认排除已入库）
+        if (!LIBRARY_MODE && target && !(document.getElementById('showInLibrary') && document.getElementById('showInLibrary').checked)) {
+          loadLeads(currentPage);
+        } else if (LIBRARY_MODE && !target) loadLeads(currentPage);
+        else renderTable(allLeadsData);
+      } catch (e) { showToast('操作失败，请重试', 'error'); }
+    }
+
+    // 详情：一键复制原文链接到剪贴板。
+    async function copyDetailLink() {
+      if (detailLeadId == null) return;
+      const lead = allLeadsData.find(l => l.id === detailLeadId); if (!lead) return;
+      const url = lead.article_url || '';
+      if (!url) { showToast('无可复制的链接', 'error'); return; }
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('已复制原文链接', 'success');
+      } catch (e) {
+        // 回退：临时 textarea execCommand
+        const ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); showToast('已复制原文链接', 'success'); }
+        catch (_) { showToast('复制失败，请手动复制', 'error'); }
+        ta.remove();
+      }
+    }
+
+    // 备注编辑弹窗（从详情打开，不关闭详情）
+    let notesLeadId = null;
+    function openNotesModal(leadId) {
+      if (leadId == null) return;
+      const lead = allLeadsData.find(l => l.id === leadId); if (!lead) return;
+      notesLeadId = leadId;
+      document.getElementById('nmEventName').value = lead.event_name || '';
+      document.getElementById('nmNotes').value = lead.notes || '';
+      document.getElementById('notesModal').classList.add('show');
+    }
+    function closeNotesModal() { document.getElementById('notesModal').classList.remove('show'); }
+    async function saveNotesAndClose() {
+      if (notesLeadId == null) return;
+      const payload = {
+        event_name: document.getElementById('nmEventName').value,
+        notes: document.getElementById('nmNotes').value,
+      };
+      try {
+        const r = await fetch(`${API_BASE}/leads/${notesLeadId}/annotation`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error('fail');
+        const lead = allLeadsData.find(l => l.id === notesLeadId);
+        if (lead) { lead.event_name = payload.event_name; lead.notes = payload.notes; }
+        renderTable(allLeadsData);
+        if (detailLeadId === notesLeadId && document.getElementById('detailModal').classList.contains('show')) {
+          openDetailModal(detailLeadId);  // 刷新详情显示
+        }
+        closeNotesModal();
+        showToast('已保存', 'success');
+      } catch (e) { showToast('保存失败，请重试', 'error'); }
+    }
+    async function llmFeedback(fb) {
+      if (detailLeadId == null) return;
+      const lead = allLeadsData.find(l => l.id === detailLeadId); if (!lead) return;
+      const next = (Number(lead.llm_feedback || 0) === fb) ? 0 : fb;  // 再点同一个=取消
+      try {
+        const r = await fetch(`${API_BASE}/leads/${detailLeadId}/llm_feedback`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback: next }),
+        });
+        if (!r.ok) throw new Error('fail');
+        lead.llm_feedback = next;
+        openDetailModal(detailLeadId);  // 重渲染高亮态
+        showToast(next === 1 ? '已赞成' : (next === -1 ? '已反对' : '已取消评价'), 'success');
+      } catch (e) { showToast('反馈失败，请重试', 'error'); }
+    }
+
+    // 人工分型（每人一份，供 AI 学习）：有活动/优质/普通/无效/垃圾；高亮当前选择。
+    function humanLabelButtons(lead) {
+      const cur = lead.human_label || '';
+      const POS = { '有活动': 'badge-success', '优质': 'badge-success', '普通': 'badge-info', '线下专家评选': 'badge-info' };
+      const WARN = { '需跟进确认': 'badge-warning', '非优质-无线上评选': 'badge-warning', '非优质-活动太小': 'badge-warning' };
+      const NEG = { '无效': 'badge-danger', '垃圾': 'badge-danger' };
+      return ['有活动', '优质', '普通', '需跟进确认', '线下专家评选', '非优质-无线上评选', '非优质-活动太小', '无效', '垃圾'].map(L => {
+        const on = (cur === L);
+        const cls = on ? (NEG[L] || WARN[L] || POS[L] || 'badge-success') : 'res-normal';
+        return `<button class="btn ${cls}" style="padding:2px 12px; font-size:12px;" onclick="humanLabel('${L}')">${L}</button>`;
+      }).join(' ');
+    }
+
+    // 保存人工分型（再点同一个=取消）；与 llmFeedback 同构。
+    async function humanLabel(label) {
+      if (detailLeadId == null) return;
+      const lead = allLeadsData.find(l => l.id === detailLeadId); if (!lead) return;
+      const next = (lead.human_label === label) ? '' : label;
+      try {
+        const r = await fetch(`${API_BASE}/leads/${detailLeadId}/human_label`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: next }),
+        });
+        if (!r.ok) throw new Error('fail');
+        lead.human_label = next;
+        openDetailModal(detailLeadId);   // 重渲染高亮态
+        showToast(next ? ('已标注：' + next) : '已取消标注', 'success');
+      } catch (e) { showToast('标注失败，请重试', 'error'); }
+    }
+
+    // ============ 站内 bug 反馈 ============
+    // 打开反馈弹窗；preCategory 可预选分类（如“重复活动”快捷入口）。自动展示当前勾选的线索 ID。
+    function openFeedbackModal(preCategory) {
+      const sel = Array.from(selectedIds);
+      document.getElementById('fbMsg').textContent = '';
+      document.getElementById('fbDesc').value = '';
+      if (preCategory) document.getElementById('fbCategory').value = preCategory;
+      const box = document.getElementById('fbLeadIds');
+      box.textContent = sel.length ? ('#' + sel.join('  #')) : '（未勾选；描述里说明即可）';
+      box.dataset.ids = JSON.stringify(sel);
+      document.getElementById('feedbackModal').classList.add('show');
+    }
+    function closeFeedbackModal() { document.getElementById('feedbackModal').classList.remove('show'); }
+
+    // “反馈重复/误判(选中)”快捷：预选重复活动分类，带上当前勾选。
+    function reportDuplicate() {
+      if (selectedIds.size < 2) {
+        showToast('请先勾选 2 条及以上“同一活动/误判”的线索', 'error');
+        return;
+      }
+      openFeedbackModal('重复活动');
+    }
+
+    async function submitFeedback() {
+      const category = document.getElementById('fbCategory').value;
+      const description = document.getElementById('fbDesc').value.trim();
+      let lead_ids = [];
+      try { lead_ids = JSON.parse(document.getElementById('fbLeadIds').dataset.ids || '[]'); } catch (e) {}
+      if (!description && !lead_ids.length) {
+        document.getElementById('fbMsg').textContent = '请填写描述，或先在列表勾选相关线索';
+        return;
+      }
+      try {
+        const r = await fetch(`${API_BASE}/feedback`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, description, lead_ids, page_url: location.pathname }),
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || '提交失败'); }
+        closeFeedbackModal();
+        showToast('反馈已提交，感谢！', 'success');
+      } catch (e) { document.getElementById('fbMsg').textContent = String(e.message || '提交失败，请重试'); }
+    }
+
+    // ============ 悬浮标注面板（活动名称 / 活动信息 / 备注） ============
+    let annotateLeadId = null;   // 当前面板正在编辑的 lead.id
+
+    // 打开悬浮窗（非阻塞：不影响主界面其他操作）
+    function openAnnotatePanel(leadId) {
+      const lead = allLeadsData.find(l => l.id === leadId);
+      if (!lead) { showToast('未找到该线索', 'error'); return; }
+      annotateLeadId = leadId;
+      document.getElementById('fpTitle').textContent = lead.title || ('线索 #' + leadId);
+      document.getElementById('fpTitle').title = lead.title || '';
+      document.getElementById('fpEventName').value = lead.event_name || '';
+      document.getElementById('fpNotes').value = lead.notes || '';
+      document.getElementById('fpExportCheck').checked = selectedIds.has(leadId);
+      document.getElementById('annotatePanel').classList.add('show');
+    }
+
+    function closeAnnotatePanel() {
+      document.getElementById('annotatePanel').classList.remove('show');
+      annotateLeadId = null;
+    }
+
+    // 面板内“加入导出勾选”与主列表 selectedIds 双向同步
+    function toggleAnnotateExport() {
+      if (annotateLeadId == null) return;
+      if (document.getElementById('fpExportCheck').checked) selectedIds.add(annotateLeadId);
+      else selectedIds.delete(annotateLeadId);
+      updateSelectedCountDisplay();
+      renderTable(allLeadsData);
+      syncHeaderCheckbox();
+    }
+
+    // 保存到后端（部分更新），并本地同步避免整页刷新关掉面板
+    async function saveAnnotation() {
+      if (annotateLeadId == null) return;
+      const payload = {
+        event_name: document.getElementById('fpEventName').value,
+        notes: document.getElementById('fpNotes').value,
+      };
+      try {
+        const resp = await fetch(`${API_BASE}/leads/${annotateLeadId}/annotation`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) throw new Error('保存失败');
+        const lead = allLeadsData.find(l => l.id === annotateLeadId);
+        if (lead) { lead.event_name = payload.event_name; lead.notes = payload.notes; }
+        renderTable(allLeadsData);
+        syncHeaderCheckbox();
+        showToast('已保存', 'success');
+      } catch (e) {
+        console.error('保存补充信息失败:', e);
+        showToast('保存失败，请重试', 'error');
+      }
+    }
+
+    // 拖拽移动（拖拽面板顶部栏）：首次拖动时从 right/bottom 定位切换为 left/top
+    (function makeAnnotatePanelDraggable() {
+      const panel = document.getElementById('annotatePanel');
+      const header = document.getElementById('fpHeader');
+      if (!panel || !header) return;
+      let dragging = false, ox = 0, oy = 0;
+      header.addEventListener('mousedown', function(e) {
+        if (e.target.classList.contains('close-btn')) return;
+        dragging = true;
+        const rect = panel.getBoundingClientRect();
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        ox = e.clientX - rect.left;
+        oy = e.clientY - rect.top;
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        panel.style.left = (e.clientX - ox) + 'px';
+        panel.style.top = (e.clientY - oy) + 'px';
+      });
+      document.addEventListener('mouseup', function() { dragging = false; });
+    })();
+
+    // 行内快捷反馈：弹出 4 选项，写入人工分型(human_label，每人一份、喂 AI 训练)。
+    // 显示口语名，底层存规范值（与详情弹窗、后端白名单一致）。
+    const ROW_LABELS = [
+      { show: '有线上活动', val: '有活动',   cls: 'badge-success' },
+      { show: '线下专家评选', val: '线下专家评选', cls: 'badge-info' },
+      { show: '需跟进确认', val: '需跟进确认', cls: 'badge-warning' },
+      { show: '非优质活动', cls: 'badge-warning', children: [
+          { show: '无线上评选', val: '非优质-无线上评选', cls: 'badge-warning' },
+          { show: '活动太小',   val: '非优质-活动太小',   cls: 'badge-warning' },
+      ] },
+      { show: '无效线索',   val: '无效',     cls: 'badge-danger' },
+      { show: '垃圾信息',   val: '垃圾',     cls: 'badge-danger' },
+    ];
+
+    function openRowLabelPopup(anchor, leadId) {
+      document.querySelectorAll('.row-label-pop').forEach(e => e.remove());
+      const lead = allLeadsData.find(l => l.id === leadId); if (!lead) return;
+      const cur = lead.human_label || '';
+      const box = document.createElement('div');
+      box.className = 'row-label-pop';
+      box.style.cssText = 'position:fixed; z-index:3000; display:flex; flex-direction:column; gap:6px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:8px; box-shadow:0 6px 20px rgba(0,0,0,.35);';
+      const title = document.createElement('div');
+      title.textContent = '反馈分型（供AI学习；再点取消）';
+      title.style.cssText = 'font-size:12px; color:var(--text-3); margin-bottom:2px;';
+      box.appendChild(title);
+      ROW_LABELS.forEach(o => {
+        if (o.children) {
+          // 父项：点击展开/收起二级选项；命中任一子项则高亮并默认展开。
+          const anyChildOn = o.children.some(c => c.val === cur);
+          const head = document.createElement('button');
+          head.className = 'btn ' + (anyChildOn ? o.cls : 'res-normal');
+          head.style.cssText = 'padding:5px 12px; font-size:13px; text-align:left; cursor:pointer;';
+          head.textContent = (anyChildOn ? '✓ ' : '') + o.show + ' ▸';
+          const sub = document.createElement('div');
+          sub.style.cssText = 'display:' + (anyChildOn ? 'flex' : 'none') + '; flex-direction:column; gap:6px; padding-left:14px; margin-top:2px;';
+          o.children.forEach(c => {
+            const cb = document.createElement('button');
+            const con = (cur === c.val);
+            cb.className = 'btn ' + (con ? c.cls : 'res-normal');
+            cb.style.cssText = 'padding:5px 12px; font-size:13px; text-align:left; cursor:pointer;';
+            cb.textContent = (con ? '✓ ' : '') + c.show;
+            cb.onclick = () => { box.remove(); setRowHumanLabel(leadId, c.val); };
+            sub.appendChild(cb);
+          });
+          head.onclick = () => { sub.style.display = (sub.style.display === 'none') ? 'flex' : 'none'; };
+          box.appendChild(head);
+          box.appendChild(sub);
+        } else {
+          const b = document.createElement('button');
+          const on = (cur === o.val);
+          b.className = 'btn ' + (on ? o.cls : 'res-normal');
+          b.style.cssText = 'padding:5px 12px; font-size:13px; text-align:left; cursor:pointer;';
+          b.textContent = (on ? '✓ ' : '') + o.show;
+          b.onclick = () => { box.remove(); setRowHumanLabel(leadId, o.val); };
+          box.appendChild(b);
+        }
+      });
+      document.body.appendChild(box);
+      const r = anchor.getBoundingClientRect();
+      let left = Math.min(r.left, window.innerWidth - box.offsetWidth - 8);
+      let top = r.bottom + 6;
+      if (top + box.offsetHeight > window.innerHeight - 8) top = r.top - box.offsetHeight - 6;
+      box.style.left = Math.max(8, left) + 'px';
+      box.style.top = Math.max(8, top) + 'px';
+      setTimeout(() => {
+        document.addEventListener('click', function h(e) {
+          if (!box.contains(e.target) && e.target !== anchor) { box.remove(); document.removeEventListener('click', h); }
+        });
+      }, 0);
+    }
+
+    // 写入人工分型（再点同一个=取消）；与详情弹窗的 humanLabel 同一后端。
+    async function setRowHumanLabel(leadId, value) {
+      const lead = allLeadsData.find(l => l.id === leadId); if (!lead) return;
+      const next = (lead.human_label === value) ? '' : value;
+      try {
+        const r = await fetch(`${API_BASE}/leads/${leadId}/human_label`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: next }),
+        });
+        if (!r.ok) throw new Error('fail');
+        lead.human_label = next;
+        renderTable(allLeadsData); syncHeaderCheckbox();
+        const disp = { '有活动': '有线上活动', '无效': '无效线索', '需跟进确认': '需跟进确认', '垃圾': '垃圾信息', '线下专家评选': '线下专家评选', '非优质-无线上评选': '非优质·无线上评选', '非优质-活动太小': '非优质·活动太小' }[next] || next;
+        showToast(next ? ('已反馈：' + disp) : '已取消反馈', 'success');
+      } catch (e) { showToast('反馈失败，请重试', 'error'); }
+    }
+
+    // 操作列按钮：回收站显示[详情/恢复/永久删除]；其余显示[反馈/详情/标注/丢弃]。
+    function actionButtons(lead) {
+      const id = lead.id || 0;
+      const S = 'padding:4px 10px; font-size:12px;';
+      if (lead.mark_status === 'trash') {
+        return `<button class="btn btn-secondary" style="${S}" onclick="openDetailModal(${id})">详情</button>
+          <button class="btn btn-success" style="${S}" onclick="restoreLead(${id})">恢复</button>
+          <button class="btn btn-danger" style="${S}" onclick="purgeLead(${id})">永久删除</button>`;
+      }
+      const markBg = lead.mark_status === 'done' ? ' background:rgba(20,159,144,.28); border-color:var(--brand-hover);' : '';
+      const starBg = lead.in_library ? ' background:rgba(251,191,36,.28); border-color:#fcd34d;' : '';
+      const fbBg = lead.human_label ? ' background:rgba(20,159,144,.28); border-color:var(--brand-hover);' : '';
+      return `<button class="btn btn-secondary" style="${S}${fbBg}" title="反馈分型（供AI学习）：${lead.human_label || '未反馈'}" onclick="event.stopPropagation(); openRowLabelPopup(this, ${id})">反馈</button>
+        <button class="btn btn-secondary" style="${S}" onclick="openDetailModal(${id})">详情</button>
+        <button class="btn btn-secondary" style="${S}${markBg}" onclick="toggleProcessed(this, ${id})" title="${lead.mark_status === 'done' ? '已处理(点击改回未处理)' : '标注已处理'}"><img src="/static/icons/fendou.svg" alt="标注" style="width:18px;height:18px;vertical-align:middle;"></button>
+        <button class="btn btn-secondary" style="${S}${starBg}" title="${lead.in_library ? '已在活动库(点击移出)' : '加入我的活动库'}" onclick="toggleLibraryById(${id})"><img src="/static/icons/shoucang.svg" alt="收藏" style="width:18px;height:18px;vertical-align:middle;"></button>
+        <button class="btn btn-secondary" style="${S}" title="丢弃到回收站" onclick="askDiscard(this, ${id})"><img src="/static/icons/huishouzhan.svg?v=2" alt="丢弃" style="width:18px;height:18px;vertical-align:middle;"></button>`;
+    }
+
+    // 丢弃就近确认：把🗑按钮就地换成“丢弃?✓✗”，无需远处弹窗。
+    function askDiscard(btn, id) {
+      const span = document.createElement('span');
+      span.style.whiteSpace = 'nowrap';
+      span.innerHTML = `<span style="font-size:12px; color:var(--warn); margin-right:4px;">丢弃?</span>` +
+        `<button class="btn btn-danger" style="padding:2px 8px; font-size:12px;" onclick="discardLead(${id})">✓</button> ` +
+        `<button class="btn btn-secondary" style="padding:2px 8px; font-size:12px;" onclick="renderTable(allLeadsData)">✗</button>`;
+      btn.replaceWith(span);
+    }
+
+    // 变更线索状态（后端 PATCH），成功后刷新当前页。
+    async function setLeadStatus(leadId, status, msg) {
+      try {
+        const r = await fetch(`${API_BASE}/leads/${leadId}/status`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        if (!r.ok) throw new Error('fail');
+        showToast(msg || '已更新', 'success');
+        loadLeads(currentPage);
+      } catch (e) { showToast('操作失败，请重试', 'error'); }
+    }
+    // 标注：未处理→直接置已处理；已处理→就近确认后改回未处理。
+    function toggleProcessed(btn, leadId) {
+      const lead = allLeadsData.find(l => l.id === leadId); if (!lead) return;
+      if (lead.mark_status === 'done') {
+        const span = document.createElement('span');
+        span.style.whiteSpace = 'nowrap';
+        span.innerHTML = `<span style="font-size:12px; color:var(--warn); margin-right:4px;">改未处理?</span>` +
+          `<button class="btn btn-primary" style="padding:2px 8px; font-size:12px;" onclick="setLeadStatus(${leadId}, 'pending_followup', '已改为未处理')">✓</button> ` +
+          `<button class="btn btn-secondary" style="padding:2px 8px; font-size:12px;" onclick="renderTable(allLeadsData)">✗</button>`;
+        btn.replaceWith(span);
+      } else {
+        setLeadStatus(leadId, 'done', '已标为已处理');
+      }
+    }
+    function discardLead(leadId) {
+      setLeadStatus(leadId, 'trash', '已移入回收站');
+    }
+    function restoreLead(leadId) { setLeadStatus(leadId, 'pending_followup', '已恢复为未处理'); }
+    async function purgeLead(leadId) {
+      if (!confirm('永久删除后不可恢复，确认删除？')) return;
+      try {
+        const r = await fetch(`${API_BASE}/leads/${leadId}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error('fail');
+        showToast('已永久删除', 'success');
+        loadLeads(currentPage);
+      } catch (e) { showToast('删除失败，请重试', 'error'); }
+    }
+
+    // 图标图片（统一尺寸）：/static/icons/ 下的 svg。
+    function iconImg(name, title) {
+      return `<img src="/static/icons/${name}" alt="${title||''}" title="${title||''}" style="width:18px;height:18px;vertical-align:middle;">`;
+    }
+
+    // 获取状态徐章：未处理/已处理用图标，回收站保留文字。
+    function getSTATUSBadge(status) {
+      if (status === 'done') return iconImg('yichuli.svg', '已处理');
+      if (status === 'trash') return '<span class="badge res-normal">回收站</span>';
+      return iconImg('weichuli_weichuli.svg', '未处理');
+    }
+
+    // 获取 LLM 清洗状态徐章：待清洗/已完成/失败 用图标。
+    function getLLMStatusBadge(status) {
+      if (status === 'done') return iconImg('yichuli_1.svg', '已清洗');
+      if (status === 'fail') return iconImg('shibai.svg', '清洗失败');
+      return iconImg('dengdai.svg', '待清洗');
+    }
+    
+    // 加载统计数据
+    async function loadStats() {
+      try {
+        const response = await fetch(`${API_BASE}/stats/dashboard`);
+        if (!response.ok) return;
+        const stats = await response.json();
+        // 统一设卡工具：cards=[[标题,数值],...]，显示前 N 张、隐藏其余。
+        const setCards = (cards) => {
+          const els = document.querySelectorAll('#statsSection .stat-card');
+          els.forEach((c, i) => {
+            if (i < cards.length) {
+              c.style.display = '';
+              c.querySelector('h3').textContent = cards[i][0];
+              c.querySelector('.number').textContent = cards[i][1] ?? '0';
+            } else {
+              c.style.display = 'none';
+            }
+          });
+        };
+        if (LIBRARY_MODE) {
+          // 我的活动库：活动库数量 / 已处理 / 未处理
+          setCards([
+            ['活动库数量', stats.library_count || '0'],
+            ['已处理', stats.library_processed || '0'],
+            ['未处理', stats.library_unprocessed || '0'],
+          ]);
+        } else if (AI_LIBRARY_MODE) {
+          // AI活动库：AI活动库数量 / 今日入库 / 昨日入库 / 已处理 / 未处理
+          setCards([
+            ['AI活动库数量', stats.ai_library_count || '0'],
+            ['今日入库', stats.ai_library_today || '0'],
+            ['昨日入库', stats.ai_library_yesterday || '0'],
+            ['已处理', stats.ai_library_processed || '0'],
+            ['未处理', stats.ai_library_unprocessed || '0'],
+          ]);
+        } else {
+          // 公海：总线索数 / AI活动库 / 今日入库 / 昨日入库 / 已处理
+          setCards([
+            ['总线索数', stats.total_leads || '0'],
+            ['AI活动库', stats.ai_library_count || '0'],
+            ['今日入库', stats.today_count || '0'],
+            ['昨日入库', stats.yesterday_count || '0'],
+            ['已处理', stats.processed_count || '0'],
+          ]);
+        }
+      } catch (error) {
+        console.error('加载统计失败:', error);
+      }
+    }
+    
+    // 打开标注模态框
+    function openMarkModal(leadId) {
+      document.getElementById('markLeadId').value = leadId;
+      document.getElementById('markRelevance').value = '';
+      document.getElementById('markCategory').value = '';
+      document.getElementById('markTags').value = '';
+      document.getElementById('markNotes').value = '';
+      document.getElementById('categoryGroup').style.display = 'none';
+      
+      document.getElementById('markModal').classList.add('show');
+    }
+    
+    // 关闭标注模态框
+    function closeMarkModal() {
+      document.getElementById('markModal').classList.remove('show');
+    }
+    
+    // 切换分类字段显示
+    function toggleCategoryField() {
+      const relevance = document.getElementById('markRelevance').value;
+      const categoryGroup = document.getElementById('categoryGroup');
+      
+      if (relevance === 'true') {
+        categoryGroup.style.display = 'block';
+      } else {
+        categoryGroup.style.display = 'none';
+      }
+    }
+    
+    // 表单提交
+    document.getElementById('markForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const leadId = parseInt(this.querySelector('#markLeadId').value);
+      const wasRelevant = this.querySelector('#markRelevance').value === 'true';
+      const correctedCategory = this.querySelector('#markCategory').value;
+      const tagsInput = this.querySelector('#markTags').value;
+      const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()) : [];
+      
+      const feedback = {
+        was_relevant: wasRelevant,
+        corrected_category: correctedCategory || null,
+        tags: tags.length > 0 ? tags : undefined
+      };
+      
+      try {
+        const response = await fetch(`${API_BASE}/leads/${leadId}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(feedback)
+        });
+        
+        if (response.ok) {
+          showToast('标注成功!', 'success');
+          closeMarkModal();
+          loadLeads(currentPage);
+          loadStats();
+        } else {
+          throw new Error('提交失败');
+        }
+      } catch (error) {
+        console.error('标注失败:', error);
+        showToast('标注失败，请重试', 'error');
+      }
+    });
+    
+    // 应用筛选
+    function applyFilters() {
+      currentPage = 1;
+      loadLeads(currentPage);
+    }
+
+    // 快捷筛选芯片：布尔类(线上/优质)切换；互斥单值类(地区/时间/状态)再点同一个=取消。
+    function toggleQuick(g, v) {
+      if (v === undefined) { quickState[g] = !quickState[g]; }
+      else { quickState[g] = (String(quickState[g]) === String(v)) ? (g === 'days' ? 0 : '') : v; }
+      applyQuickChipStyles();
+      applyFilters();
+    }
+
+    // ==================== 临时优先级快速筛选 ====================
+    let _priorityFilter = null;  // 当前选中的优先级（null=无过滤）
+
+    function quickPriority(priority) {
+      _priorityFilter = priority === _priorityFilter ? null : priority;
+      // UI 更新激活态
+      document.querySelectorAll('.lvl-P0,.lvl-P1,.lvl-P2').forEach(btn => btn.style.fontWeight='400');
+      const level = {P0:'lvl-P0',P1:'lvl-P1',P2:'lvl-P2'};
+      const activeBtn = document.querySelector(`.btn.${level[priority]}`);
+      if (activeBtn) activeBtn.style.fontWeight='700';
+      
+      // 调用 loadLeads 重新加载
+      loadLeads(0);  // 重置到第一页
+    }
+
+    function clearPriorityFilter() {
+      _priorityFilter = null;
+      document.querySelectorAll('.lvl-P0,.lvl-P1,.lvl-P2').forEach(btn => btn.style.fontWeight='400');
+      loadLeads(0);
+    }
+    function applyQuickChipStyles() {
+      document.querySelectorAll('.qchip').forEach(el => {
+        const g = el.dataset.g, v = el.dataset.v;
+        const active = (v === undefined) ? !!quickState[g] : (String(quickState[g]) === String(v));
+        el.classList.toggle('active', active);
+      });
+    }
+    
+    // 重置筛选：清空所有筛选控件（含地区/投票/开关）后重新加载。
+    function resetFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('categoryFilter').value = '';
+      const snl = document.getElementById('showNonLead'); if (snl) snl.checked = false;
+      const sil = document.getElementById('showInLibrary'); if (sil) sil.checked = false;
+      const sas = document.getElementById('showAllStatus'); if (sas) sas.checked = false;
+      const ge = document.getElementById('groupEvent'); if (ge) ge.checked = true;
+      quickState = { region: '', days: 0, online: false, excellent: false, status: '', activity_status: '' };
+      applyQuickChipStyles();
+      currentPage = 1;
+      loadLeads(currentPage);
+    }
+
+    // 回收站入口：切换到回收站视图（再点返回）。
+    let _trashMode = false;
+    function toggleTrashView() {
+      _trashMode = !_trashMode;
+      const btn = document.getElementById('trashBtn');
+      if (_trashMode) {
+        btn.classList.remove('btn-secondary'); btn.classList.add('btn-primary');
+        btn.innerHTML = '← 返回列表';
+      } else {
+        btn.classList.remove('btn-primary'); btn.classList.add('btn-secondary');
+        btn.innerHTML = '<img src="/static/icons/huishouzhan.svg?v=2" alt="" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;">回收站';
+      }
+      applyFilters();
+    }
+    function changePage(delta) {
+      const totalPages = Math.ceil((totalLeads || 0) / pageSize) || 1;
+      const newPage = currentPage + delta;
+      if (newPage >= 1 && newPage <= totalPages) {
+        loadLeads(newPage);
+      }
+    }
+    
+    // 更新分页显示
+    function updatePagination(total, current) {
+      totalLeads = total;
+      const totalPages = Math.ceil(total / pageSize) || 1;
+      document.getElementById('pageInfo').textContent = `${current} / ${totalPages}`;
+    }
+    
+    // 导出数据（智能模式：未勾选则弹窗提示总条数并确认是否全量；已勾选则只导出当前选中）
+    function exportData() {
+      if (allLeadsData.length === 0) {
+        showToast('暂无可导出的数据', 'error');
+        return;
+      }
+      // 先弹列选择对话框（默认=当前显示列）；有选中行则导出选中，否则全量。
+      openExportModal(selectedIds.size > 0 ? 'selected' : 'all');
+    }
+    
+    // 转换为 CSV（列与后端全量导出对齐；含逗号/引号/换行的字段会被正确转义）
+    function csvCell(v) {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    function convertToCSV(data) {
+      const headers = ['ID','关键词','标题','URL','采集时间','发布时间','来源账号','渠道','意图分类','资源等级','优先级分数','优先级等级','状态','活动名称','备注','摘要'];
+      const rows = data.map(item => [
+        item.id || '',
+        item.keyword || '',
+        item.title || '',
+        item.article_url || '',
+        item.created_at || '',
+        item.publish_time || '',
+        item.account || '',
+        channelName(item.source_channel),
+        item.intent_category || item.corrected_category || '',
+        item.resource_level === 'excellent' ? '优' : '普通',
+        item.priority_score !== null && item.priority_score !== undefined ? String(item.priority_score) : '',
+        item.priority_level || '',
+        item.mark_status || '',
+        item.event_name || '',
+        item.notes || '',
+        item.summary || ''
+      ].map(csvCell));
+
+      return [headers.map(csvCell).join(','), ...rows.map(r => r.join(','))].join('\n');
+    }
+    
+    // 设置侧边栏导航
+    function setupSidebarNavigation() {
+      const menuItems = document.querySelectorAll('.sidebar-menu li');
+      menuItems.forEach(item => {
+        item.addEventListener('click', function() {
+          menuItems.forEach(i => i.classList.remove('active'));
+          this.classList.add('active');
+          
+          const pageNum = this.dataset.page;
+          const titles = {
+            'leads': '线索公海',
+            'statistics': '数据统计',
+            'feedback': '反馈管理',
+            'settings': '系统设置'
+          };
+          
+          document.getElementById('pageTitle').textContent = titles[pageNum] || '管理后台';
+        });
+      });
+    }
+    
+    // 显示 Toast
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast ' + type + ' show';
+      
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 3000);
+    }
+    
+    // HTML 转义
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // 格式化日期：月/日 时:分；本年度隐藏年份，跨年才带年份。
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return '-';
+      const opts = { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+      if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+      return date.toLocaleString('zh-CN', opts);
+    }
+    
+    // 点击模态框外部关闭
+    document.getElementById('markModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeMarkModal();
+      }
+    });
+    document.getElementById('detailModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeDetailModal();
+      }
+    });
+  </script>
+  <script src="/static/sidebar.js"></script>
+</body>
+</html>
