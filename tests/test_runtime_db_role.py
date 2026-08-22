@@ -154,7 +154,7 @@ def test_cli_json_output_never_contains_connection_secrets(
     assert "management-secret" not in output
 
 
-def test_permission_contract_keeps_tenant_delete_and_functions_explicit():
+def test_permission_contract_keeps_tenant_identity_read_only_and_functions_explicit():
     source = (
         Path("wxsearch/runtime_db_role.py")
         .read_text(encoding="utf-8")
@@ -162,10 +162,22 @@ def test_permission_contract_keeps_tenant_delete_and_functions_explicit():
     )
     normalized = " ".join(source.split())
 
+    assert "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES," in normalized
+    assert "TRIGGER ON TABLE public.tenants," in normalized
+    assert "public.tenant_memberships FROM {}" in normalized
+    assert "GRANT SELECT ON TABLE public.tenants," in normalized
+    assert "public.tenant_memberships TO {}" in normalized
     assert (
-        "REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE "
-        "public.tenants, public.tenant_memberships"
+        "'schema_migrations', 'tenants', 'tenant_memberships'"
     ) in normalized
+    assert "tenant identity tables must be runtime SELECT-only" in normalized
+    assert "INSERT INTO public.{table_name} SELECT *" in normalized
+    assert "UPDATE public.{table_name} SET id=id WHERE FALSE" in normalized
+
+    # Future public application tables retain compatibility DML, but an
+    # identity/control-plane table must never rely on that broad default.
     assert "GRANT SELECT, INSERT, UPDATE ON TABLES TO {}" in normalized
+    assert "Identity/control-plane tables require an explicit" in source
+    assert "must never inherit this write grant silently" in source
     assert "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC" in normalized
     assert "public.app_list_active_tenants(uuid) TO {}" in normalized

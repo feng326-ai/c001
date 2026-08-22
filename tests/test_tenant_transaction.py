@@ -62,7 +62,14 @@ class FakeCursor:
             self.rows = [(str(params[0]),)]
             self.rowcount = 1
         elif "app_list_active_tenants" in normalized:
-            self.rows = list(self.scenario.choices)
+            if params is not None and len(params) == 2:
+                self.rows = (
+                    [(self.scenario.membership_id, self.scenario.role)]
+                    if self.scenario.membership_active
+                    else []
+                )
+            else:
+                self.rows = list(self.scenario.choices)
             self.rowcount = len(self.rows)
         elif "tenant_memberships" in normalized:
             self.rows = (
@@ -185,13 +192,24 @@ def test_tenant_transaction_pins_authorization_and_business_to_one_connection():
     user_index = next(i for i, sql_text in enumerate(sql_calls) if "from users" in sql_text)
     set_index = next(i for i, sql_text in enumerate(sql_calls) if "set_config" in sql_text)
     membership_index = next(
-        i for i, sql_text in enumerate(sql_calls) if "tenant_memberships" in sql_text
+        i for i, sql_text in enumerate(sql_calls)
+        if "app_list_active_tenants" in sql_text
     )
     business_index = next(
         i for i, sql_text in enumerate(sql_calls) if "unit_business" in sql_text
     )
-    assert user_index < set_index < membership_index < business_index
-    assert "for share" in sql_calls[membership_index]
+    assert user_index < membership_index < set_index < business_index
+    assert "tenant_memberships" not in sql_calls[membership_index]
+    assert "for share" not in sql_calls[membership_index]
+    authorization_event = next(
+        event
+        for event in scenario.events
+        if event[0] == "execute" and "app_list_active_tenants" in event[1]
+    )
+    assert authorization_event[2] == (
+        str(scenario.user_public_id),
+        str(tenant_id),
+    )
     execute_connection_ids = {
         event[3] for event in scenario.events if event[0] == "execute"
     }
@@ -227,8 +245,9 @@ def test_denied_principal_never_yields_or_commits(user_enabled, membership_activ
     assert not any(event[0] == "commit" for event in scenario.events)
     assert any(event[0] == "rollback" for event in scenario.events)
     assert _putconn_events(scenario.events)[-1][2] is False
-    if not user_enabled:
-        assert not any("set_config" in sql_text for sql_text in _executed_sql(scenario.events))
+    assert not any(
+        "set_config" in sql_text for sql_text in _executed_sql(scenario.events)
+    )
 
 
 @pytest.mark.parametrize(

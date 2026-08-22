@@ -273,26 +273,21 @@ class DatabaseConnector:
             cursor = conn.cursor()
             user_public_id = self._load_enabled_public_id(cursor, user_id)
             cursor.execute(
-                "SELECT set_config('app.tenant_id', %s, true)",
-                (str(tenant_id),),
-            )
-            cursor.fetchone()
-            cursor.execute(
                 """
-                SELECT tm.id, tm.role
-                FROM tenant_memberships AS tm
-                JOIN tenants AS t ON t.id = tm.tenant_id
-                WHERE tm.tenant_id = %s
-                  AND tm.user_id = %s
-                  AND tm.status = 'active'
-                  AND t.status = 'active'
-                FOR SHARE OF tm, t
+                SELECT membership_id, membership_role
+                FROM app_list_active_tenants(%s)
+                WHERE tenant_id = %s
                 """,
-                (str(tenant_id), str(user_public_id)),
+                (str(user_public_id), str(tenant_id)),
             )
             membership = cursor.fetchone()
             if not membership:
                 raise TenantAccessDenied("tenant access denied")
+            cursor.execute(
+                "SELECT set_config('app.tenant_id', %s, true)",
+                (str(tenant_id),),
+            )
+            cursor.fetchone()
 
             principal = TenantPrincipal(
                 user_id=user_id,

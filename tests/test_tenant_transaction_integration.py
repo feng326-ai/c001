@@ -55,6 +55,8 @@ class RuntimeFixture:
     tenants: dict[str, uuid.UUID]
     users: dict[str, tuple[int, uuid.UUID]]
     memberships: dict[str, uuid.UUID]
+    probe_table: str
+    probe_rows: dict[str, uuid.UUID]
 
 
 @pytest.fixture(scope="module")
@@ -89,6 +91,8 @@ def runtime_fixture():
         "disabled_tenant": uuid.uuid4(),
         "other_b": uuid.uuid4(),
     }
+    probe_table = f"qa_tenant_tx_probe_{suffix}"
+    probe_rows = {"a": uuid.uuid4(), "b": uuid.uuid4()}
     admin = psycopg2.connect(admin_url)
     setup_committed = False
     user_ids = {}
@@ -123,9 +127,10 @@ def runtime_fixture():
                     "GRANT SELECT (id, public_id, enabled) ON users TO {}"
                 ).format(sql.Identifier(role_name))
             )
-            # PostgreSQL row-locking SELECT requires UPDATE on at least one
-            # column of every locked relation.  Keep that extra permission
-            # column-scoped for this transaction contract role.
+            # The legacy identity lookup still locks users, whose update
+            # permission is needed by existing user administration. Tenant
+            # identity authorization itself goes through the 022 narrow
+            # function, so tenants/memberships stay strictly read-only.
             cursor.execute(
                 sql.SQL("GRANT UPDATE (enabled) ON users TO {}").format(
                     sql.Identifier(role_name)
@@ -137,17 +142,7 @@ def runtime_fixture():
                 )
             )
             cursor.execute(
-                sql.SQL("GRANT UPDATE (name, status) ON tenants TO {}").format(
-                    sql.Identifier(role_name)
-                )
-            )
-            cursor.execute(
                 sql.SQL("GRANT SELECT ON tenant_memberships TO {}").format(
-                    sql.Identifier(role_name)
-                )
-            )
-            cursor.execute(
-                sql.SQL("GRANT UPDATE (status) ON tenant_memberships TO {}").format(
                     sql.Identifier(role_name)
                 )
             )
@@ -247,6 +242,48 @@ def runtime_fixture():
                 """,
                 [tuple(str(value) for value in row) for row in membership_rows],
             )
+            cursor.execute(
+                sql.SQL(
+                    "CREATE TABLE public.{} ("
+                    "id UUID PRIMARY KEY, tenant_id UUID NOT NULL, value TEXT NOT NULL)"
+                ).format(sql.Identifier(probe_table))
+            )
+            cursor.execute(
+                sql.SQL("ALTER TABLE public.{} ENABLE ROW LEVEL SECURITY").format(
+                    sql.Identifier(probe_table)
+                )
+            )
+            cursor.execute(
+                sql.SQL("ALTER TABLE public.{} FORCE ROW LEVEL SECURITY").format(
+                    sql.Identifier(probe_table)
+                )
+            )
+            cursor.execute(
+                sql.SQL(
+                    "CREATE POLICY {} ON public.{} FOR ALL TO PUBLIC "
+                    "USING (tenant_id = public.app_current_tenant_id()) "
+                    "WITH CHECK (tenant_id = public.app_current_tenant_id())"
+                ).format(
+                    sql.Identifier(f"{probe_table}_isolation"),
+                    sql.Identifier(probe_table),
+                )
+            )
+            cursor.execute(
+                sql.SQL(
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON public.{} TO {}"
+                ).format(
+                    sql.Identifier(probe_table), sql.Identifier(role_name)
+                )
+            )
+            cursor.executemany(
+                sql.SQL(
+                    "INSERT INTO public.{}(id, tenant_id, value) VALUES(%s, %s, %s)"
+                ).format(sql.Identifier(probe_table)),
+                [
+                    (str(probe_rows[key]), str(tenants[key]), f"initial-{key}")
+                    for key in ("a", "b")
+                ],
+            )
         admin.commit()
         setup_committed = True
         runtime_check = psycopg2.connect(runtime_url)
@@ -263,6 +300,20 @@ def runtime_fixture():
                 assert session_user == role_name
                 assert is_super is False
                 assert bypasses_rls is False
+                cursor.execute(
+                    """
+                    SELECT has_table_privilege(
+                               current_user, 'tenants', 'UPDATE'
+                           ),
+                           has_table_privilege(
+                               current_user, 'tenant_memberships', 'UPDATE'
+                           ),
+                           has_table_privilege(
+                               current_user, 'tenant_memberships', 'INSERT'
+                           )
+                    """
+                )
+                assert cursor.fetchone() == (False, False, False)
                 cursor.execute(
                     """
                     SELECT pg_get_userbyid(relowner)
@@ -285,11 +336,18 @@ def runtime_fixture():
                 for key in user_public_ids
             },
             memberships=memberships,
+            probe_table=probe_table,
+            probe_rows=probe_rows,
         )
     finally:
         admin.rollback()
         if setup_committed:
             with admin.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("DROP TABLE IF EXISTS public.{}").format(
+                        sql.Identifier(probe_table)
+                    )
+                )
                 cursor.execute(
                     "DELETE FROM tenant_memberships WHERE id = ANY(%s::uuid[])",
                     ([str(value) for value in memberships.values()],),
@@ -432,6 +490,7 @@ def test_transaction_denies_inactive_and_cross_tenant_without_context_leak(
 @pytest.mark.skipif(not RUN, reason="requires migrations 021-022 and QA PG15")
 def test_same_backend_a_then_no_context_then_b_and_rollback(runtime_fixture):
     import psycopg2
+    from psycopg2 import sql
 
     fixture = runtime_fixture
     user_id, user_public_id = fixture.users["ab"]
@@ -455,8 +514,10 @@ def test_same_backend_a_then_no_context_then_b_and_rollback(runtime_fixture):
             assert setting_a == str(fixture.tenants["a"])
             assert uuid.UUID(str(visible_a)) == fixture.tenants["a"]
             assert transaction.execute_write(
-                "UPDATE tenants SET name=%s WHERE id=%s",
-                ("Tenant A committed", str(fixture.tenants["a"])),
+                sql.SQL("UPDATE public.{} SET value=%s WHERE tenant_id=%s").format(
+                    sql.Identifier(fixture.probe_table)
+                ),
+                ("committed-a", str(fixture.tenants["a"])),
             ) == 1
 
         backend_none, setting_none, visible_none = _raw_pool_state(
@@ -489,8 +550,10 @@ def test_same_backend_a_then_no_context_then_b_and_rollback(runtime_fixture):
                 requested_tenant_id=fixture.tenants["a"],
             ) as transaction:
                 transaction.execute_write(
-                    "UPDATE tenants SET name=%s WHERE id=%s",
-                    ("must roll back", str(fixture.tenants["a"])),
+                    sql.SQL(
+                        "UPDATE public.{} SET value=%s WHERE tenant_id=%s"
+                    ).format(sql.Identifier(fixture.probe_table)),
+                    ("must-roll-back", str(fixture.tenants["a"])),
                 )
                 raise RuntimeError("force rollback")
 
@@ -498,18 +561,14 @@ def test_same_backend_a_then_no_context_then_b_and_rollback(runtime_fixture):
         try:
             with admin.cursor() as cursor:
                 cursor.execute(
-                    "SELECT name FROM tenants WHERE id=%s",
-                    (str(fixture.tenants["a"]),),
+                    sql.SQL("SELECT value FROM public.{} WHERE id=%s").format(
+                        sql.Identifier(fixture.probe_table)
+                    ),
+                    (str(fixture.probe_rows["a"]),),
                 )
-                assert cursor.fetchone()[0] == "Tenant A committed"
+                assert cursor.fetchone()[0] == "committed-a"
         finally:
             admin.rollback()
-            with admin.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE tenants SET name='Tenant A' WHERE id=%s",
-                    (str(fixture.tenants["a"]),),
-                )
-            admin.commit()
             admin.close()
         backend_after, setting_after, visible_after = _raw_pool_state(
             connector, tenant_ids
@@ -517,6 +576,56 @@ def test_same_backend_a_then_no_context_then_b_and_rollback(runtime_fixture):
         assert backend_after == backend_a
         assert setting_after in (None, "")
         assert visible_after == []
+
+
+@pytest.mark.skipif(not RUN, reason="requires migrations 021-022 and QA PG15")
+def test_membership_revocation_finishes_inflight_but_denies_next_transaction(
+    runtime_fixture,
+):
+    import psycopg2
+    from psycopg2 import sql
+
+    from wxsearch.db_connector import TenantAccessDenied
+
+    fixture = runtime_fixture
+    user_id = fixture.users["a_only"][0]
+    membership_id = fixture.memberships["a_only"]
+    admin = psycopg2.connect(fixture.admin_url)
+    try:
+        with _runtime_connector(fixture.runtime_url, 1) as connector:
+            with connector.tenant_transaction(
+                authenticated_user_id=user_id,
+                requested_tenant_id=fixture.tenants["a"],
+            ) as transaction:
+                with admin.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE tenant_memberships SET status='disabled' WHERE id=%s",
+                        (str(membership_id),),
+                    )
+                admin.commit()
+                rows = transaction.execute_query(
+                    sql.SQL("SELECT value FROM public.{} WHERE id=%s").format(
+                        sql.Identifier(fixture.probe_table)
+                    ),
+                    (str(fixture.probe_rows["a"]),),
+                )
+                assert len(rows) == 1
+
+            with pytest.raises(TenantAccessDenied):
+                with connector.tenant_transaction(
+                    authenticated_user_id=user_id,
+                    requested_tenant_id=fixture.tenants["a"],
+                ):
+                    pytest.fail("revoked membership must fail on the next transaction")
+    finally:
+        admin.rollback()
+        with admin.cursor() as cursor:
+            cursor.execute(
+                "UPDATE tenant_memberships SET status='active' WHERE id=%s",
+                (str(membership_id),),
+            )
+        admin.commit()
+        admin.close()
 
 
 @pytest.mark.skipif(not RUN, reason="requires migrations 021-022 and QA PG15")

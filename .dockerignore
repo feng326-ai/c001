@@ -13,6 +13,8 @@
 secrets/
 wxsearch/config/secrets.json
 /config.json
+tenant-mapping.private*.json
+tenant-mapping.private*.jsonl
 
 # 运行时数据与部署产物。
 logs/

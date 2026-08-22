@@ -160,6 +160,80 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
             assert cursor.fetchone() == (True, False)
         runtime.rollback()
 
+        with runtime.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT relation_name,
+                       has_table_privilege(
+                           current_user, relation_name, 'SELECT'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'INSERT'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'UPDATE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'DELETE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'TRUNCATE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'REFERENCES'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'TRIGGER'
+                       )
+                FROM unnest(ARRAY[
+                    'public.tenants', 'public.tenant_memberships'
+                ]) AS relation_name
+                ORDER BY relation_name
+                """
+            )
+            assert cursor.fetchall() == [
+                (
+                    "public.tenant_memberships",
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ),
+                (
+                    "public.tenants",
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ),
+            ]
+
+            for table_name in ("tenants", "tenant_memberships"):
+                with pytest.raises(errors.InsufficientPrivilege):
+                    cursor.execute(
+                        sql.SQL(
+                            "INSERT INTO public.{} SELECT * FROM public.{} "
+                            "WHERE FALSE"
+                        ).format(
+                            sql.Identifier(table_name),
+                            sql.Identifier(table_name),
+                        )
+                    )
+                runtime.rollback()
+                with pytest.raises(errors.InsufficientPrivilege):
+                    cursor.execute(
+                        sql.SQL(
+                            "UPDATE public.{} SET id=id WHERE FALSE"
+                        ).format(sql.Identifier(table_name))
+                    )
+                runtime.rollback()
+
         with admin.cursor() as cursor:
             cursor.execute(
                 sql.SQL(
@@ -194,6 +268,7 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
         assert result["relation_owner"] is False
         assert result["ddl_allowed"] is False
         assert result["ledger_write_allowed"] is False
+        assert result["tenant_identity_write_allowed"] is False
     finally:
         if runtime is not None:
             runtime.rollback()

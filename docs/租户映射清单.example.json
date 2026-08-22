@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "batch_id": "10000000-0000-4000-8000-000000000001",
+  "target_environment": "example",
+  "source_snapshot_at": "2026-08-23T00:00:00+08:00",
+  "source_users_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "approval_reference": "synthetic-example-only",
+  "policy": {
+    "expected_tenant_count": 1,
+    "expected_sales_per_tenant": 1,
+    "expected_reviewers_per_tenant": 1,
+    "allow_cross_tenant_users": false
+  },
+  "tenants": [
+    {
+      "tenant_id": "20000000-0000-4000-8000-000000000001",
+      "tenant_code": "example-company-a",
+      "tenant_name": "合成示例公司甲",
+      "default_visibility_policy": "shared_competition",
+      "initial_status": "disabled",
+      "observed_legacy_team_id": 101,
+      "expected_sales_count": 1,
+      "expected_reviewer_count": 1,
+      "company_approval_reference": "synthetic-company-approval",
+      "memberships": [
+        {
+          "membership_id": "30000000-0000-4000-8000-000000000001",
+          "legacy_user_id_observed": 1001,
+          "user_public_id": "40000000-0000-4000-8000-000000000001",
+          "legacy_team_id_observed": 101,
+          "legacy_role_observed": "admin",
+          "tenant_role": "resource_reviewer",
+          "membership_status": "active",
+          "mapping_action": "create",
+          "reason_code": "company_roster_confirmed",
+          "company_approval_reference": "synthetic-reviewer-approval"
+        },
+        {
+          "membership_id": "30000000-0000-4000-8000-000000000002",
+          "legacy_user_id_observed": 1002,
+          "user_public_id": "40000000-0000-4000-8000-000000000002",
+          "legacy_team_id_observed": 101,
+          "legacy_role_observed": "member",
+          "tenant_role": "sales",
+          "membership_status": "active",
+          "mapping_action": "create",
+          "reason_code": "company_roster_confirmed",
+          "company_approval_reference": "synthetic-sales-approval"
+        }
+      ]
+    }
+  ],
+  "excluded_users": [
+    {
+      "legacy_user_id_observed": 1,
+      "user_public_id": "40000000-0000-4000-8000-000000000099",
+      "legacy_team_id_observed": 1,
+      "legacy_role_observed": "super",
+      "classification": "platform_only",
+      "reason_code": "platform_administration_only",
+      "approval_reference": "synthetic-platform-approval"
+    }
+  ]
+}

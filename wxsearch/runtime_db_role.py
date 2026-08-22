@@ -357,7 +357,15 @@ def provision_runtime_role(
                 )
                 cursor.execute(
                     sql.SQL(
-                        "REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.tenants, public.tenant_memberships FROM {}"
+                        "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, "
+                        "TRIGGER ON TABLE public.tenants, "
+                        "public.tenant_memberships FROM {}"
+                    ).format(runtime)
+                )
+                cursor.execute(
+                    sql.SQL(
+                        "GRANT SELECT ON TABLE public.tenants, "
+                        "public.tenant_memberships TO {}"
                     ).format(runtime)
                 )
                 cursor.execute(
@@ -389,6 +397,10 @@ def provision_runtime_role(
                     ).format(runtime)
                 )
 
+                # Compatibility default for future application tables is limited
+                # to public. Identity/control-plane tables require an explicit
+                # narrower override (or a schema unavailable to runtime); they
+                # must never inherit this write grant silently.
                 cursor.execute(
                     sql.SQL(
                         "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
@@ -549,7 +561,9 @@ def check_runtime_role(
                 JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
                 WHERE namespace.nspname='public'
                   AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-                  AND relation.relname <> 'schema_migrations'
+                  AND relation.relname NOT IN (
+                      'schema_migrations', 'tenants', 'tenant_memberships'
+                  )
                 """
             )
             if not cursor.fetchone()[0]:
@@ -557,14 +571,71 @@ def check_runtime_role(
 
             cursor.execute(
                 """
-                SELECT has_table_privilege(current_user, 'public.tenants', 'DELETE'),
+                SELECT relation_name,
                        has_table_privilege(
-                           current_user, 'public.tenant_memberships', 'DELETE'
+                           current_user, relation_name, 'SELECT'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'INSERT'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'UPDATE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'DELETE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'TRUNCATE'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'REFERENCES'
+                       ),
+                       has_table_privilege(
+                           current_user, relation_name, 'TRIGGER'
                        )
+                FROM unnest(ARRAY[
+                    'public.tenants', 'public.tenant_memberships'
+                ]) AS relation_name
+                ORDER BY relation_name
                 """
             )
-            if cursor.fetchone() != (False, False):
-                raise RuntimeRoleError("tenant identity tables must reject DELETE")
+            identity_acl = cursor.fetchall()
+            if identity_acl != [
+                (
+                    "public.tenant_memberships",
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ),
+                (
+                    "public.tenants",
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ),
+            ]:
+                raise RuntimeRoleError(
+                    "tenant identity tables must be runtime SELECT-only"
+                )
+
+            for table_name in ("tenants", "tenant_memberships"):
+                _expect_permission_denied(
+                    cursor,
+                    f"INSERT INTO public.{table_name} SELECT * "
+                    f"FROM public.{table_name} WHERE FALSE",
+                )
+                _expect_permission_denied(
+                    cursor,
+                    f"UPDATE public.{table_name} SET id=id WHERE FALSE",
+                )
 
             cursor.execute(
                 """
@@ -614,6 +685,7 @@ def check_runtime_role(
             "relation_owner": False,
             "ddl_allowed": False,
             "ledger_write_allowed": False,
+            "tenant_identity_write_allowed": False,
         }
     finally:
         connection.rollback()

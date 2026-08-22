@@ -129,6 +129,8 @@ README.bak.md
 *.crt
 secrets/
 secrets.json
+/tenant-mapping.private*.json
+/tenant-mapping.private*.jsonl
 
 # 一次性部署脚本与生成文档（非项目源码，只在本地保留）
 /_deploy_tmp/
