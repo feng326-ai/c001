@@ -30,6 +30,24 @@ RESERVED_ROLES = {
 }
 EXPECTED_DENIAL = "42501"
 
+TENANT_CONTROL_READ_ONLY_TABLES = (
+    "tenants",
+    "tenant_memberships",
+    "source_documents",
+    "organizations",
+    "event_series",
+    "event_editions",
+    "event_sources",
+    "tenant_resource_grants",
+)
+
+TENANT_RUNTIME_TABLE_PRIVILEGES = {
+    "tenant_candidates": ("SELECT", "UPDATE"),
+    "tenant_reviews": ("SELECT", "INSERT", "UPDATE"),
+    "tenant_command_receipts": ("SELECT", "INSERT", "UPDATE"),
+    "domain_outbox": ("SELECT", "INSERT"),
+}
+
 
 class RuntimeRoleError(RuntimeError):
     """Runtime database role configuration is unsafe or incomplete."""
@@ -201,7 +219,12 @@ def _assert_not_database_or_schema_owner(cursor, role_name: str) -> None:
         )
 
 
-def _tenant_function_state(cursor, runtime_role: str) -> dict[str, object] | None:
+def _security_definer_function_state(
+    cursor,
+    runtime_role: str,
+    signature: str,
+    label: str,
+) -> dict[str, object] | None:
     cursor.execute(
         """
         SELECT procedure.prosecdef,
@@ -220,10 +243,9 @@ def _tenant_function_state(cursor, runtime_role: str) -> dict[str, object] | Non
                )
         FROM pg_proc procedure
         JOIN pg_roles owner ON owner.oid=procedure.proowner
-        WHERE procedure.oid=to_regprocedure(
-            'public.app_list_active_tenants(uuid)'
-        )
-        """
+        WHERE procedure.oid=to_regprocedure(%s)
+        """,
+        (signature,),
     )
     row = cursor.fetchone()
     if row is None:
@@ -246,13 +268,44 @@ def _tenant_function_state(cursor, runtime_role: str) -> dict[str, object] | Non
         or not public_execute_revoked
     ):
         raise RuntimeRoleError(
-            "app_list_active_tenants(uuid) has an unsafe security definition"
+            f"{label} has an unsafe security definition"
         )
     return {
         "owner": owner_name,
         "security_definer": True,
         "search_path": "pg_catalog",
     }
+
+
+def _tenant_function_state(cursor, runtime_role: str) -> dict[str, object] | None:
+    return _security_definer_function_state(
+        cursor,
+        runtime_role,
+        "public.app_list_active_tenants(uuid)",
+        "app_list_active_tenants(uuid)",
+    )
+
+
+def _tenant_write_function_state(
+    cursor, runtime_role: str
+) -> dict[str, object] | None:
+    return _security_definer_function_state(
+        cursor,
+        runtime_role,
+        "public.app_authorize_tenant_write(integer,uuid)",
+        "app_authorize_tenant_write(integer,uuid)",
+    )
+
+
+def _tenant_review_grant_function_state(
+    cursor, runtime_role: str
+) -> dict[str, object] | None:
+    return _security_definer_function_state(
+        cursor,
+        runtime_role,
+        "public.app_lock_active_review_grant(uuid,uuid)",
+        "app_lock_active_review_grant(uuid,uuid)",
+    )
 
 
 def provision_runtime_role(
@@ -379,6 +432,44 @@ def provision_runtime_role(
                         "GRANT SELECT ON TABLE public.schema_migrations TO {}"
                     ).format(runtime)
                 )
+                for table_name in TENANT_CONTROL_READ_ONLY_TABLES:
+                    cursor.execute(
+                        "SELECT to_regclass(%s) IS NOT NULL",
+                        (f"public.{table_name}",),
+                    )
+                    if not cursor.fetchone()[0]:
+                        continue
+                    table = sql.Identifier("public", table_name)
+                    cursor.execute(
+                        sql.SQL("REVOKE ALL PRIVILEGES ON TABLE {} FROM {}").format(
+                            table, runtime
+                        )
+                    )
+                    cursor.execute(
+                        sql.SQL("GRANT SELECT ON TABLE {} TO {}").format(
+                            table, runtime
+                        )
+                    )
+                for table_name, privileges in TENANT_RUNTIME_TABLE_PRIVILEGES.items():
+                    cursor.execute(
+                        "SELECT to_regclass(%s) IS NOT NULL",
+                        (f"public.{table_name}",),
+                    )
+                    if not cursor.fetchone()[0]:
+                        continue
+                    table = sql.Identifier("public", table_name)
+                    cursor.execute(
+                        sql.SQL("REVOKE ALL PRIVILEGES ON TABLE {} FROM {}").format(
+                            table, runtime
+                        )
+                    )
+                    cursor.execute(
+                        sql.SQL("GRANT {} ON TABLE {} TO {}").format(
+                            sql.SQL(", ").join(map(sql.SQL, privileges)),
+                            table,
+                            runtime,
+                        )
+                    )
                 cursor.execute(
                     sql.SQL(
                         "REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public "
@@ -451,6 +542,50 @@ def provision_runtime_role(
                             "public.app_list_active_tenants(uuid) TO {}"
                         ).format(runtime)
                     )
+                cursor.execute(
+                    "SELECT to_regprocedure("
+                    "'public.app_authorize_tenant_write(integer,uuid)') "
+                    "IS NOT NULL"
+                )
+                write_function_granted = bool(cursor.fetchone()[0])
+                if write_function_granted:
+                    cursor.execute(
+                        "REVOKE EXECUTE ON FUNCTION "
+                        "public.app_authorize_tenant_write(integer,uuid) "
+                        "FROM PUBLIC"
+                    )
+                    _tenant_write_function_state(
+                        cursor, settings.app_database_user
+                    )
+                    cursor.execute(
+                        sql.SQL(
+                            "GRANT EXECUTE ON FUNCTION "
+                            "public.app_authorize_tenant_write(integer,uuid) "
+                            "TO {}"
+                        ).format(runtime)
+                    )
+                cursor.execute(
+                    "SELECT to_regprocedure("
+                    "'public.app_lock_active_review_grant(uuid,uuid)') "
+                    "IS NOT NULL"
+                )
+                grant_lock_function_granted = bool(cursor.fetchone()[0])
+                if grant_lock_function_granted:
+                    cursor.execute(
+                        "REVOKE EXECUTE ON FUNCTION "
+                        "public.app_lock_active_review_grant(uuid,uuid) "
+                        "FROM PUBLIC"
+                    )
+                    _tenant_review_grant_function_state(
+                        cursor, settings.app_database_user
+                    )
+                    cursor.execute(
+                        sql.SQL(
+                            "GRANT EXECUTE ON FUNCTION "
+                            "public.app_lock_active_review_grant(uuid,uuid) "
+                            "TO {}"
+                        ).format(runtime)
+                    )
         checked = check_runtime_role(settings)
         return {
             "status": "provisioned",
@@ -458,6 +593,8 @@ def provision_runtime_role(
             "migration_owner": migration_owner,
             "runtime_user": settings.app_database_user,
             "function_granted": function_granted,
+            "write_function_granted": write_function_granted,
+            "grant_lock_function_granted": grant_lock_function_granted,
             "verified": True,
         }
     finally:
@@ -562,7 +699,12 @@ def check_runtime_role(
                 WHERE namespace.nspname='public'
                   AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
                   AND relation.relname NOT IN (
-                      'schema_migrations', 'tenants', 'tenant_memberships'
+                      'schema_migrations', 'tenants', 'tenant_memberships',
+                      'source_documents', 'organizations', 'event_series',
+                      'event_editions', 'event_sources',
+                      'tenant_resource_grants', 'tenant_candidates',
+                      'tenant_reviews', 'tenant_command_receipts',
+                      'domain_outbox'
                   )
                 """
             )
@@ -637,6 +779,75 @@ def check_runtime_role(
                     f"UPDATE public.{table_name} SET id=id WHERE FALSE",
                 )
 
+            for table_name in TENANT_CONTROL_READ_ONLY_TABLES:
+                cursor.execute(
+                    "SELECT to_regclass(%s) IS NOT NULL",
+                    (f"public.{table_name}",),
+                )
+                if not cursor.fetchone()[0]:
+                    continue
+                cursor.execute(
+                    """
+                    SELECT has_table_privilege(current_user, %s, 'SELECT'),
+                           has_table_privilege(current_user, %s, 'INSERT'),
+                           has_table_privilege(current_user, %s, 'UPDATE'),
+                           has_table_privilege(current_user, %s, 'DELETE'),
+                           has_table_privilege(current_user, %s, 'TRUNCATE'),
+                           has_table_privilege(current_user, %s, 'REFERENCES'),
+                           has_table_privilege(current_user, %s, 'TRIGGER')
+                    """,
+                    tuple([f"public.{table_name}"] * 7),
+                )
+                if cursor.fetchone() != (
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ):
+                    raise RuntimeRoleError(
+                        f"{table_name} must be runtime SELECT-only"
+                    )
+
+            privilege_order = (
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "TRUNCATE",
+                "REFERENCES",
+                "TRIGGER",
+            )
+            for table_name, allowed in TENANT_RUNTIME_TABLE_PRIVILEGES.items():
+                cursor.execute(
+                    "SELECT to_regclass(%s) IS NOT NULL",
+                    (f"public.{table_name}",),
+                )
+                if not cursor.fetchone()[0]:
+                    continue
+                cursor.execute(
+                    """
+                    SELECT has_table_privilege(current_user, %s, 'SELECT'),
+                           has_table_privilege(current_user, %s, 'INSERT'),
+                           has_table_privilege(current_user, %s, 'UPDATE'),
+                           has_table_privilege(current_user, %s, 'DELETE'),
+                           has_table_privilege(current_user, %s, 'TRUNCATE'),
+                           has_table_privilege(current_user, %s, 'REFERENCES'),
+                           has_table_privilege(current_user, %s, 'TRIGGER')
+                    """,
+                    tuple([f"public.{table_name}"] * 7),
+                )
+                actual = cursor.fetchone()
+                expected = tuple(
+                    privilege in allowed for privilege in privilege_order
+                )
+                if actual != expected:
+                    raise RuntimeRoleError(
+                        f"{table_name} runtime privileges are unsafe"
+                    )
+
             cursor.execute(
                 """
                 SELECT COALESCE(bool_and(
@@ -666,6 +877,40 @@ def check_runtime_role(
                     raise RuntimeRoleError(
                         "runtime tenant discovery function grant is missing"
                     )
+            tenant_write_function = _tenant_write_function_state(
+                cursor, current_user
+            )
+            if tenant_write_function is not None:
+                cursor.execute(
+                    """
+                    SELECT has_function_privilege(
+                        current_user,
+                        'public.app_authorize_tenant_write(integer,uuid)',
+                        'EXECUTE'
+                    )
+                    """
+                )
+                if not cursor.fetchone()[0]:
+                    raise RuntimeRoleError(
+                        "runtime tenant write authorization grant is missing"
+                    )
+            tenant_review_grant_function = _tenant_review_grant_function_state(
+                cursor, current_user
+            )
+            if tenant_review_grant_function is not None:
+                cursor.execute(
+                    """
+                    SELECT has_function_privilege(
+                        current_user,
+                        'public.app_lock_active_review_grant(uuid,uuid)',
+                        'EXECUTE'
+                    )
+                    """
+                )
+                if not cursor.fetchone()[0]:
+                    raise RuntimeRoleError(
+                        "runtime active grant lock function grant is missing"
+                    )
 
             ddl_probe = sql.SQL("CREATE TABLE public.{}(id integer)").format(
                 sql.Identifier(f"runtime_ddl_probe_{uuid.uuid4().hex}")
@@ -682,6 +927,10 @@ def check_runtime_role(
             "database": database_name,
             "runtime_user": current_user,
             "function_available": tenant_function is not None,
+            "write_function_available": tenant_write_function is not None,
+            "grant_lock_function_available": (
+                tenant_review_grant_function is not None
+            ),
             "relation_owner": False,
             "ddl_allowed": False,
             "ledger_write_allowed": False,

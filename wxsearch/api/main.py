@@ -41,6 +41,7 @@ app.add_middleware(GZipMiddleware, minimum_size=512)
 
 from .tenant_session import (
     router as tenant_session_router,
+    tenant_review_enabled,
     tenant_session_binding_enabled,
     validate_tenant_feature_flags,
 )
@@ -59,6 +60,19 @@ async def auth_guard(request: Request, call_next):
     同时给后台页面加禁缓存头，避免浏览器用旧页面/旧 JS 导致会话失效时“翻页无数据”。"""
     path = request.url.path
     if path.startswith("/api/v2/session") and not tenant_session_binding_enabled():
+        return JSONResponse(
+            {"detail": "not_found"},
+            status_code=404,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
+                "Vary": "Cookie",
+            },
+        )
+    if (
+        path.startswith("/api/v2/tenant-candidates")
+        or path.startswith("/api/v2/tenant-reviews")
+    ) and not tenant_review_enabled():
         return JSONResponse(
             {"detail": "not_found"},
             status_code=404,
@@ -91,6 +105,8 @@ async def auth_guard(request: Request, call_next):
         path.startswith("/admin")
         or path == "/login"
         or path.startswith("/api/v2/session")
+        or path.startswith("/api/v2/tenant-candidates")
+        or path.startswith("/api/v2/tenant-reviews")
     ):
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         resp.headers["Pragma"] = "no-cache"
@@ -1989,6 +2005,10 @@ app.include_router(organizers.router, prefix="/api/v1", tags=["organizers"])
 
 # 租户会话只在主应用路由全部声明后装配；开关关闭时中间件统一返回 404。
 app.include_router(tenant_session_router)
+
+# 租户审核路由保持注册但默认隐藏；启动门禁仍拒绝提前打开生产开关。
+from .review_routes import router as tenant_review_router
+app.include_router(tenant_review_router)
 
 # 采集侧 -> 正式环境内部同步入口（时间戳 HMAC 鉴权，不使用登录 Cookie）。
 from . import sync

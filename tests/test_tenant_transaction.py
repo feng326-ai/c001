@@ -71,6 +71,20 @@ class FakeCursor:
             else:
                 self.rows = list(self.scenario.choices)
             self.rowcount = len(self.rows)
+        elif "app_authorize_tenant_write" in normalized:
+            self.rows = (
+                [
+                    (
+                        self.scenario.user_public_id,
+                        self.scenario.membership_id,
+                        self.scenario.role,
+                    )
+                ]
+                if self.scenario.user_enabled
+                and self.scenario.membership_active
+                else []
+            )
+            self.rowcount = len(self.rows)
         elif "tenant_memberships" in normalized:
             self.rows = (
                 [(self.scenario.membership_id, self.scenario.role)]
@@ -220,6 +234,71 @@ def test_tenant_transaction_pins_authorization_and_business_to_one_connection():
     connector.execute_write.assert_not_called()
     with pytest.raises(TenantTransactionUsageError):
         transaction.execute_query("SELECT after_close")
+
+
+def test_tenant_write_transaction_uses_locked_narrow_authorization_first():
+    scenario = FakeScenario(role="resource_reviewer")
+    connector, connection = _connector(scenario)
+    tenant_id = uuid.uuid4()
+
+    with connector.tenant_write_transaction(
+        authenticated_user_id=17,
+        requested_tenant_id=tenant_id,
+    ) as transaction:
+        assert transaction.principal == TenantPrincipal(
+            user_id=17,
+            user_public_id=scenario.user_public_id,
+            tenant_id=tenant_id,
+            membership_id=scenario.membership_id,
+            role="resource_reviewer",
+        )
+        transaction.execute_write("UPDATE review_business SET value=1")
+
+    sql_calls = _executed_sql(scenario.events)
+    authorization_index = next(
+        i
+        for i, sql_text in enumerate(sql_calls)
+        if "app_authorize_tenant_write" in sql_text
+    )
+    set_index = next(
+        i for i, sql_text in enumerate(sql_calls) if "set_config" in sql_text
+    )
+    business_index = next(
+        i for i, sql_text in enumerate(sql_calls) if "review_business" in sql_text
+    )
+    assert authorization_index < set_index < business_index
+    authorization_event = next(
+        event
+        for event in scenario.events
+        if event[0] == "execute" and "app_authorize_tenant_write" in event[1]
+    )
+    assert authorization_event[2] == (17, str(tenant_id))
+    assert authorization_event[3] == id(connection)
+    assert sql_calls[:3] == [
+        "set local lock_timeout = '2s'",
+        "set local statement_timeout = '5s'",
+        "set local idle_in_transaction_session_timeout = '5s'",
+    ]
+
+
+def test_tenant_write_denial_never_sets_scope_or_yields():
+    scenario = FakeScenario(membership_active=False)
+    connector, _connection = _connector(scenario)
+    yielded = False
+
+    with pytest.raises(TenantAccessDenied):
+        with connector.tenant_write_transaction(
+            authenticated_user_id=17,
+            requested_tenant_id=uuid.uuid4(),
+        ):
+            yielded = True
+
+    assert yielded is False
+    assert not any(
+        "set_config" in sql_text for sql_text in _executed_sql(scenario.events)
+    )
+    assert not any(event[0] == "commit" for event in scenario.events)
+    assert any(event[0] == "rollback" for event in scenario.events)
 
 
 @pytest.mark.parametrize(

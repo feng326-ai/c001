@@ -88,3 +88,9 @@ docker exec wxsearch_db pg_dump -U admin wx_search > backup_before_migration.sql
 `021_tenant_identity_rls.sql` 当前只是 expand-only、休眠的表结构保护网。合并或执行该迁移不代表租户功能已经安全上线；现有页面、API 和 worker 不得读取或写入这些新表。
 
 任何租户功能启用前，必须先拆分迁移 owner 与最小权限运行角色，提供同一物理连接和同一事务内的 `tenant_transaction`，并用已认证用户的 active membership 完成服务端授权。`app.tenant_id` 自定义 GUC 只作为 RLS 的事务作用域，不能替代身份认证。生产迁移和角色授权必须作为独立发布步骤，经备份恢复、影子库与预发布验收后执行。
+
+## 023 审核垂直切片的启用边界
+
+`023_review_vertical_slice.sql` 追加共享来源/活动届次、租户授权、Candidate、Review、领域 Outbox 与命令幂等账本，并提供审核写事务专用的锁定授权函数。迁移不创建真实租户、成员、授权或 Candidate，也不包含跨租户自动分发身份。
+
+生产启用前必须完成私有 roster、运行角色精确 ACL、原因字典与去向矩阵、受控分发入口、Outbox publisher、备份恢复和单租户 canary。当前 `TENANT_REVIEW_ENABLED=true` 仍由启动门禁拒绝；禁止为测试新表而在已投入使用的生产数据库直接执行 021～023。

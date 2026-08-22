@@ -234,6 +234,67 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
                     )
                 runtime.rollback()
 
+        with runtime.cursor() as cursor:
+            readonly_tables = (
+                "source_documents",
+                "organizations",
+                "event_series",
+                "event_editions",
+                "event_sources",
+                "tenant_resource_grants",
+            )
+            for table_name in readonly_tables:
+                cursor.execute(
+                    """
+                    SELECT has_table_privilege(current_user, %s, 'SELECT'),
+                           has_table_privilege(current_user, %s, 'INSERT'),
+                           has_table_privilege(current_user, %s, 'UPDATE'),
+                           has_table_privilege(current_user, %s, 'DELETE')
+                    """,
+                    tuple([f"public.{table_name}"] * 4),
+                )
+                assert cursor.fetchone() == (True, False, False, False)
+
+            expected_scoped = {
+                "tenant_candidates": (True, False, True, False),
+                "tenant_reviews": (True, True, True, False),
+                "tenant_command_receipts": (True, True, True, False),
+                "domain_outbox": (True, True, False, False),
+            }
+            for table_name, expected in expected_scoped.items():
+                cursor.execute(
+                    """
+                    SELECT has_table_privilege(current_user, %s, 'SELECT'),
+                           has_table_privilege(current_user, %s, 'INSERT'),
+                           has_table_privilege(current_user, %s, 'UPDATE'),
+                           has_table_privilege(current_user, %s, 'DELETE')
+                    """,
+                    tuple([f"public.{table_name}"] * 4),
+                )
+                assert cursor.fetchone() == expected
+
+            cursor.execute(
+                """
+                SELECT has_function_privilege(
+                           current_user,
+                           'public.app_authorize_tenant_write(integer,uuid)',
+                           'EXECUTE'
+                       )
+                """
+            )
+            assert cursor.fetchone() == (True,)
+            cursor.execute(
+                """
+                SELECT has_function_privilege(
+                           current_user,
+                           'public.app_lock_active_review_grant(uuid,uuid)',
+                           'EXECUTE'
+                       )
+                """
+            )
+            assert cursor.fetchone() == (True,)
+        runtime.rollback()
+
         with admin.cursor() as cursor:
             cursor.execute(
                 sql.SQL(
@@ -269,6 +330,8 @@ def test_runtime_login_is_idempotent_non_owner_and_least_privilege(monkeypatch):
         assert result["ddl_allowed"] is False
         assert result["ledger_write_allowed"] is False
         assert result["tenant_identity_write_allowed"] is False
+        assert result["write_function_available"] is True
+        assert result["grant_lock_function_available"] is True
     finally:
         if runtime is not None:
             runtime.rollback()

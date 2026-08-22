@@ -54,6 +54,10 @@ def tenant_session_binding_enabled() -> bool:
     return _strict_flag("TENANT_SESSION_BINDING_ENABLED")
 
 
+def tenant_review_enabled() -> bool:
+    return _strict_flag("TENANT_REVIEW_ENABLED")
+
+
 def _session_secret_is_safe() -> bool:
     value = auth_module.SESSION_SECRET.strip().lower()
     unsafe_markers = (
@@ -71,7 +75,7 @@ def validate_tenant_feature_flags() -> dict[str, bool]:
 
     binding = tenant_session_binding_enabled()
     required = _strict_flag("TENANT_SESSION_REQUIRED")
-    review = _strict_flag("TENANT_REVIEW_ENABLED")
+    review = tenant_review_enabled()
     if required:
         raise RuntimeError("TENANT_SESSION_REQUIRED is not available in this release")
     if review:
@@ -197,6 +201,22 @@ def _verify_scope_csrf(
     ):
         raise HTTPException(status_code=403, detail="csrf_invalid")
     return auth_token, claims
+
+
+def require_tenant_command_scope(
+    request: Request,
+    current_user: dict,
+    submitted_csrf_token: str | None,
+    db: DatabaseConnector | None = None,
+) -> TenantSessionContext:
+    """Verify write CSRF, resolve the candidate scope and refresh membership.
+
+    The returned context is still not write authorization.  The caller must
+    enter ``tenant_write_transaction`` and use its database principal.
+    """
+
+    _verify_scope_csrf(request, current_user, submitted_csrf_token)
+    return resolve_tenant_scope(request, current_user, db)
 
 
 def resolve_tenant_scope(

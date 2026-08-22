@@ -181,3 +181,7 @@ def test_permission_contract_keeps_tenant_identity_read_only_and_functions_expli
     assert "must never inherit this write grant silently" in source
     assert "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC" in normalized
     assert "public.app_list_active_tenants(uuid) TO {}" in normalized
+    assert "public.app_authorize_tenant_write(integer,uuid)" in normalized
+    assert "runtime tenant write authorization grant is missing" in source
+    assert "public.app_lock_active_review_grant(uuid,uuid)" in normalized
+    assert "runtime active grant lock function grant is missing" in source

@@ -116,7 +116,7 @@ def _cookie_value(response, cookie_name):
     return None
 
 
-def test_v2_session_routes_have_only_frozen_methods_and_are_registered_once():
+def test_v2_session_and_dormant_review_routes_are_registered_once():
     expected = {
         "/api/v2/session": {"GET"},
         "/api/v2/session/tenants": {"GET"},
@@ -137,11 +137,15 @@ def test_v2_session_routes_have_only_frozen_methods_and_are_registered_once():
         getattr(route, "original_router", None) is tenant_session.router
         for route in api_main.app.routes
     ) == 1
-    assert not any(
-        "review" in getattr(route, "path", "").lower()
-        for route in api_main.app.routes
-        if getattr(route, "path", "").startswith("/api/v2/")
-    )
+    review_methods = {
+        "/api/v2/tenant-candidates": {"GET"},
+        "/api/v2/tenant-candidates/{candidate_id}:start-review": {"POST"},
+        "/api/v2/tenant-reviews/{review_id}:complete": {"POST"},
+    }
+    assert {
+        path: {method.upper() for method in openapi_paths[path]}
+        for path in review_methods
+    } == review_methods
 
 
 @pytest.mark.parametrize(

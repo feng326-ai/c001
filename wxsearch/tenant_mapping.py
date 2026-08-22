@@ -609,6 +609,9 @@ def _schema_facts(cursor) -> dict[str, Any]:
     return {
         "migration_count": len(versions),
         "migration_head": versions[-1] if versions else None,
+        "tenant_mapping_migrations_ready": {"021", "022"}.issubset(
+            set(versions)
+        ),
         "tenants_ready": bool(row[3]),
         "memberships_ready": bool(row[4]),
         "discovery_ready": bool(row[5]),
@@ -668,7 +671,7 @@ def inventory_database(connection) -> dict[str, Any]:
                 **facts,
                 "mapping_ready": all(
                     (
-                        facts["migration_head"] == "022",
+                        facts["tenant_mapping_migrations_ready"],
                         facts["tenants_ready"],
                         facts["memberships_ready"],
                         facts["discovery_ready"],
@@ -706,7 +709,7 @@ def dry_run_database(
             facts = _schema_facts(cursor)
             if not all(
                 (
-                    facts["migration_head"] == "022",
+                    facts["tenant_mapping_migrations_ready"],
                     facts["tenants_ready"],
                     facts["memberships_ready"],
                     facts["discovery_ready"],

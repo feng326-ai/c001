@@ -610,6 +610,7 @@ def test_inventory_and_dry_run_enforce_read_only_timeout_and_rollback():
     _assert_read_only_protocol(inventory_connection)
     assert HEX_64.fullmatch(inventory["source_users_digest_sha256"])
     assert inventory["migration_head"] == "022"
+    assert inventory["tenant_mapping_migrations_ready"] is True
     assert inventory["mapping_ready"] is True
 
     manifest = _manifest_for_inventory(_example_data(), inventory)

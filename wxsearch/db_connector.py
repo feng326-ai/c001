@@ -326,6 +326,91 @@ class DatabaseConnector:
             self._local.tenant_transaction_active = False
             self._release_connection(conn, broken=broken)
 
+    @contextmanager
+    def tenant_write_transaction(
+        self,
+        *,
+        authenticated_user_id: int,
+        requested_tenant_id: UUID | str,
+    ) -> Iterator[TenantDbTransaction]:
+        """Authorize a short tenant write behind an identity-row lock barrier.
+
+        Unlike the discovery/read transaction, this path calls the narrowly
+        granted 023 authorization function.  That function takes ``FOR SHARE``
+        locks on the enabled user, active tenant and active membership, so an
+        administrative revoke cannot commit concurrently with a review write
+        that has already crossed the authorization boundary.
+        """
+
+        user_id = self._authenticated_user_id(authenticated_user_id)
+        tenant_id = self._canonical_uuid(requested_tenant_id)
+        self._reject_autonomous_access_inside_tenant_transaction()
+
+        conn = cursor = transaction = None
+        broken = False
+        commit_started = False
+        self._local.tenant_transaction_active = True
+        try:
+            conn = self.pool.getconn()
+            if conn.autocommit:
+                conn.autocommit = False
+            cursor = conn.cursor()
+            cursor.execute("SET LOCAL lock_timeout = '2s'")
+            cursor.execute("SET LOCAL statement_timeout = '5s'")
+            cursor.execute("SET LOCAL idle_in_transaction_session_timeout = '5s'")
+            cursor.execute(
+                """
+                SELECT user_public_id, membership_id, membership_role
+                FROM public.app_authorize_tenant_write(%s, %s)
+                """,
+                (user_id, str(tenant_id)),
+            )
+            authorization = cursor.fetchone()
+            if not authorization:
+                raise TenantAccessDenied("tenant access denied")
+            cursor.execute(
+                "SELECT set_config('app.tenant_id', %s, true)",
+                (str(tenant_id),),
+            )
+            cursor.fetchone()
+
+            principal = TenantPrincipal(
+                user_id=user_id,
+                user_public_id=UUID(str(authorization[0])),
+                tenant_id=tenant_id,
+                membership_id=UUID(str(authorization[1])),
+                role=str(authorization[2]),
+            )
+            transaction = TenantDbTransaction(cursor, principal)
+            yield transaction
+            transaction._close()
+            commit_started = True
+            conn.commit()
+        except BaseException as error:
+            if transaction is not None:
+                transaction._close()
+            broken = bool(
+                commit_started
+                or isinstance(error, (OperationalError, InterfaceError))
+                or (conn is not None and conn.closed)
+            )
+            if conn is not None and not conn.closed:
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    broken = True
+            raise
+        finally:
+            if transaction is not None:
+                transaction._close()
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:  # noqa: BLE001
+                    broken = True
+            self._local.tenant_transaction_active = False
+            self._release_connection(conn, broken=broken)
+
     def list_active_tenants(
         self, *, authenticated_user_id: int
     ) -> list[TenantChoice]:
