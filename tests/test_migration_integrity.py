@@ -210,7 +210,7 @@ def test_applied_history_must_be_a_contiguous_prefix(tmp_path: Path):
 
 def test_repository_checksum_baseline_is_current():
     files = get_migration_files()
-    assert len(load_checksum_baseline(files)) == len(files) == 20
+    assert len(load_checksum_baseline(files)) == len(files)
 
 
 def _guarded_qa_database_url() -> str:

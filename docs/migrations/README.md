@@ -82,3 +82,9 @@ docker exec wxsearch_db pg_dump -U admin wx_search > backup_before_migration.sql
 ---
 
 当前版本与校验值以 `checksum_baseline.json` 和实际 `NNN_description.sql` 文件为准，不在本文维护第二份易漂移列表。
+
+## 021 租户地基的启用边界
+
+`021_tenant_identity_rls.sql` 当前只是 expand-only、休眠的表结构保护网。合并或执行该迁移不代表租户功能已经安全上线；现有页面、API 和 worker 不得读取或写入这些新表。
+
+任何租户功能启用前，必须先拆分迁移 owner 与最小权限运行角色，提供同一物理连接和同一事务内的 `tenant_transaction`，并用已认证用户的 active membership 完成服务端授权。`app.tenant_id` 自定义 GUC 只作为 RLS 的事务作用域，不能替代身份认证。生产迁移和角色授权必须作为独立发布步骤，经备份恢复、影子库与预发布验收后执行。

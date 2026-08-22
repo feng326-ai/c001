@@ -1,6 +1,6 @@
 # 当前开发批次与文件租约
 
-> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前处于“设计基线收口”，尚未开始数据库迁移或业务功能实现。
+> 仅集成负责人维护。领取任务前必须核对本表；未登记的窗口不得写入仓库文件。当前 021 仅在代码与隔离 QA 中开发验收，尚未部署或启用租户业务功能。
 
 ## 活动任务
 
@@ -13,14 +13,16 @@
 | `CONTRACT-CORE-001` | 集成负责人 `/root`（领域只读审查：协作智能体） | 共享工作区 / `main` | `docs/核心领域契约_v1.md`<br>`docs/决策记录.md`<br>`docs/需求登记.md`<br>`docs/对接规范_INTEGRATION.md`<br>`docs/开发批次/ACTIVE.md` | tenant / organizer / event_series / event_edition / review / opportunity 最小契约 | 已完成 | 状态机、唯一键、字段所有权、租户隔离和旧模型映射已冻结并通过最终 P0/P1 审查；本批次不创建业务表 |
 | `QA-FOUNDATION-001` | 集成负责人 `/root`（质量、迁移、安全只读审查：协作智能体） | 共享工作区 / `main` | `.github/workflows/ci.yml`<br>`.env.qa.example`<br>`.gitattributes`<br>`.gitignore`<br>`pytest.ini`<br>`requirements-dev.txt`<br>`Dockerfile.qa`<br>`docker-compose.qa.yml`<br>`tools/check_secrets.py`<br>`tools/check_migrations.py`<br>`tests/conftest.py`<br>`tests/test_secret_scan.py`<br>`tests/test_migration_integrity.py`<br>`tests/test_migration_history_policy.py`<br>`wxsearch/migrations/run.py`<br>`docs/migrations/README.md`<br>`docs/migrations/schema_migrations.sql`<br>`docs/migrations/checksum_baseline.json`<br>`docs/QA质量地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | CI、安全占位变量、规范化 LF SHA-256、精确旧 MD5 + 最终态兼容、跨提交 append-only、一次性 PG/Redis 测试环境 | 已完成 | 169 个已跟踪文件 Secret 门禁通过；四份 Compose 渲染、Ruff fatal gate、001～020 全量迁移/只读复核和 101 项测试全部通过；历史 018 精确 ledger+完整视图态已在 PG15 验证；临时容器/网络/目录均已销毁；PR/push 以 Git 基准提交冻结既有 SQL 与 baseline，只允许追加新版本 |
 | `SEC-CREDENTIAL-BOUNDARY-001` | 集成负责人 `/root`（安全只读审查：协作智能体） | 共享工作区 / `main` | `wxsearch/api/main.py`<br>`wxsearch/templates/system_settings.html`<br>`wxsearch/ai_filters/llm_client.py`<br>`wxsearch/sogou_loop.py`<br>`start_sogou_loop.bat`<br>`tests/test_security_boundaries.py`<br>`.gitignore`<br>`.dockerignore`<br>`config.json`（仅停止跟踪，保留本机文件）<br>`config.example.json`<br>`wxsearch/config.py`<br>`tests/test_config_contract.py`<br>`README.md`<br>`docs/决策记录.md`<br>`docs/坑位手册.md`<br>`docs/开发批次/ACTIVE.md` | 模型探测只允许 super + POST；自定义端点不得继承服务端密钥；采集日志令牌改请求头；采集节点不要求数据库口令；运行时配置缺失/启用态占位值 fail closed | 已完成 | 路由权限/方法、allowlist、禁止继承服务端 key、原子私有落盘、请求头令牌、无数据库口令节点和安全配置模板均有回归测试；`config.json` 不入 Git/Docker context，缺失配置或启用态缺显式 Redis 端点/唯一 VM 身份时拒绝启动；本批只提交代码，尚未部署、设置现有 Windows ACL 或轮换生产凭据 |
+| `MIGRATION-TENANT-001` | 数据库实现：`/root/domain_migration`；集成负责人 `/root` | 共享工作区 / `main` | `docs/migrations/021_tenant_identity_rls.sql`<br>`docs/migrations/checksum_baseline.json`<br>`docs/migrations/README.md`<br>`tests/test_tenant_migration_contract.py`<br>`tests/test_migration_integrity.py`<br>`docs/租户身份与RLS地基验收记录_2026-08-23.md`<br>`docs/决策记录.md`<br>`docs/开发批次/ACTIVE.md` | expand-only：`users.public_id`、`tenants`、`tenant_memberships`、事务租户上下文解析函数、`ENABLE/FORCE RLS`；不建候选/审核/商机，不回填三家公司 | 已完成 | 空库执行 001～021 与历史只读复核通过；legacy cutoff 保持 020；结构/约束/RLS/回滚边界通过独立审查；本迁移保持休眠，不等于运行时租户隔离已上线 |
+| `QA-CONTRACT-002` | QA 实现：`/root/collaboration_quality`；集成负责人 `/root` | 共享工作区 / `main` | `tests/test_tenant_rls_integration.py` | 独立非 superuser DB 角色验证 A 可读写 A、A 不可读写 B、无上下文零行/拒写、事务池复用无上下文残留、伪造业务 tenant 字段不能扩大 RLS | 已完成 | PostgreSQL 15 隔离栈 108 项测试通过；临时角色非 super/非 owner/无 BYPASSRLS；正反向越权、写入、事务重用及清理均通过 |
 
 ## 下一批候选（尚未领取、没有写租约）
 
 | 建议任务 ID | 目标 | 前置条件 |
 |---|---|---|
-| `MIGRATION-TENANT-001` | 第一批 expand-only 多租户/审核地基迁移 | 最小契约冻结；真正的迁移测试环境可用；迁移号已分配 |
+| `TENANT-RUNTIME-ROLE-001` | 拆分迁移 owner 与 API/worker 运行角色；产出不含真实密码的授权脚本和部署校验，确保运行角色 `NOSUPERUSER/NOBYPASSRLS` 且非租户表 owner | 021 合并；先在隔离/预发布验证；未完成前禁止启用任何租户表读写 |
+| `TENANT-TRANSACTION-AUTH-001` | 实现同物理连接、同事务 `tenant_transaction`；以认证 `users.public_id` 校验 active membership，并提供认证前最小权限成员列举入口 | 运行角色方案冻结；安全审查和连接复用/异常回滚集成测试通过后才能开发租户 endpoint/worker |
 | `ROLLOUT-COLLECT-V2-002` | 按单机灰度流程依次升级 `win10-02/03/04`，每台独立验收和回滚 | `win10-01` 连续观察至少 12～24 小时；无本机 fence、heartbeat、result 错误；逐台确认唯一 MAC / `vm_instance_id` |
-| `QA-CONTRACT-002` | 登录/角色、同步 HMAC/重放/乱序、字段所有权和未来 RLS 契约测试 | 必须在第一批多租户迁移合并前完成，可与迁移实现并行但由 QA 独立验收 |
 | `QA-SUPPLYCHAIN-002` | Gitleaks 全历史、服务端/Windows 采集依赖锁、pip-audit、Compose 策略和 Trivy 镜像门禁 | 先拆分运行时依赖；对历史命中逐条核实，不用 baseline 掩盖真实凭据 |
 | `CLEANUP-REDIS-SET-003` | 把结果缓存的弃用 `setex` 调用改为 `set(..., ex=...)` 并清除 5 条测试警告 | 不改变 key、TTL 或返回语义；单独小提交 |
 
