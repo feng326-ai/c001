@@ -1,0 +1,160 @@
+name: xiansuo-staging
+
+# Ubuntu 独立测试管理栈：默认只运行 PostgreSQL、Redis 和 Backend。
+# - 不加入本地生产采集栈的网络，不复用其卷、端口或凭据；
+# - PostgreSQL/Redis 不发布宿主机端口，现有采集 VM 无法接入；
+# - 不定义 Celery Beat，默认也不运行 Worker，因此不会领词、清洗或同步；
+# - 应从干净 Git 提交构建带 SHA 的镜像，禁止挂载生产源码目录。
+
+x-app-environment: &staging-app-environment
+  ENVIRONMENT: staging
+  DATABASE_URL: postgresql://staging_admin:${STAGING_POSTGRES_PASSWORD:?STAGING_POSTGRES_PASSWORD_required}@postgres:5432/wx_search_staging
+  REDIS_URL: redis://:${STAGING_REDIS_PASSWORD:?STAGING_REDIS_PASSWORD_required}@redis:6379/0
+  DB_POOL_MAX: "4"
+  DB_CONNECT_TIMEOUT: "5"
+  SESSION_SECRET: ${STAGING_SESSION_SECRET:?STAGING_SESSION_SECRET_required}
+  DEVICE_ONLINE_TIMEOUT: "600"
+
+  # 三层保险之一：所有可能外呼或驱动真实采集的能力均硬关闭，不能被 .env 覆盖。
+  AI_ENABLED: "false"
+  AI_BACKEND: rule
+  AI_PROVIDER: disabled
+  AI_MODEL: ""
+  AI_API_KEY: ""
+  OPENAI_API_KEY: ""
+  LLM_CLEAN_ENABLED: "false"
+  SCHEDULER_ENABLED: "false"
+  ALERT_ENABLED: "false"
+  ALERT_WEBHOOK_URL: ""
+  BACKUP_ENABLED: "false"
+  PROD_SYNC_ENABLED: "false"
+  PROD_SYNC_URL: ""
+  PROD_SYNC_SECRET: ""
+  PROD_SYNC_SOURCE: staging-disabled
+
+  # 留空会让正式同步接收与采集日志接收接口直接返回 503。
+  SYNC_SHARED_SECRET: ""
+  COLLECT_LOG_TOKEN: ""
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wx_search_staging
+      POSTGRES_USER: staging_admin
+      POSTGRES_PASSWORD: ${STAGING_POSTGRES_PASSWORD:?STAGING_POSTGRES_PASSWORD_required}
+      TZ: Asia/Shanghai
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
+    networks:
+      - staging_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U staging_admin -d wx_search_staging"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 768m
+    cpus: 1.0
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${STAGING_REDIS_PASSWORD:?STAGING_REDIS_PASSWORD_required} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${STAGING_REDIS_PASSWORD:?STAGING_REDIS_PASSWORD_required}
+    volumes:
+      - staging_redisdata:/data
+    networks:
+      - staging_net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 256m
+    cpus: 0.5
+
+  backend:
+    image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn wxsearch.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:${STAGING_BACKEND_PORT:-18000}:8000"
+    environment: *staging-app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - staging_net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+    mem_limit: 768m
+    cpus: 1.0
+
+  # 仅供显式的初始化/升级操作；恢复完整 pg_dump 时先恢复，再只运行 migrate。
+  schema-init:
+    profiles: ["admin"]
+    image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
+    command: ["sh", "-ec", "psql \"$$DATABASE_URL\" -v ON_ERROR_STOP=1 -f /app/docs/db_schema.sql"]
+    environment: *staging-app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - staging_net
+    restart: "no"
+
+  migrate:
+    profiles: ["admin"]
+    image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
+    command: python -m wxsearch.migrations.run
+    environment: *staging-app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - staging_net
+    restart: "no"
+
+  # 默认不存在于运行栈；只有人工异步集成测试时才显式启用 jobs profile。
+  # 独立 Redis 未发布端口，即使启用也无法领取四台真实 VM 的任务。
+  celery-worker:
+    profiles: ["jobs"]
+    image: xiansuo-staging-app:${APP_IMAGE_TAG:?APP_IMAGE_TAG_required}
+    command: celery -A wxsearch.tasks worker -l info -c 1 -Q staging
+    environment: *staging-app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - staging_net
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.5
+
+networks:
+  staging_net:
+    name: xiansuo_staging_net
+    driver: bridge
+
+volumes:
+  staging_pgdata:
+    name: xiansuo_staging_pgdata
+  staging_redisdata:
+    name: xiansuo_staging_redisdata

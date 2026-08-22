@@ -1,0 +1,50 @@
+.git
+.github
+.agents
+.codex
+
+# 本地环境与真实凭据永不进入镜像构建上下文。
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+wxsearch/config/secrets.json
+
+# 运行时数据与部署产物。
+logs/
+backups/
+_deploy_tmp/
+runtime/
+temp/
+.cache/
+*.log
+*.dump
+*.rdb
+*.sqlite3
+
+# Python、IDE 与测试产物。
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# 本地探针和媒体产物不参与服务端镜像。
+tools/_*
+tools/*.png
+tools/*.html
+tools/*.xml
+tools/*.out
+tools/*.txt
+*.jpg
+*.jpeg
+*.gif
