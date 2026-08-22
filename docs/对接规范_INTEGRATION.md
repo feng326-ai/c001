@@ -1,175 +1,164 @@
-# 线索中台 · 对接规范（Integration Contract）
+# 线索平台对接规范（Integration Contract）
 
-> **用途**：本系统（线索中台，下称"主系统"）与两个并行开发的新系统对接的**唯一权威契约**。
-> - **窗口A：OA 系统** —— 只读消费主系统的线索数据。
-> - **窗口B：手机采集系统** —— 作为"微信搜一搜(手机)"渠道，把采集结果灌入主系统。
->
-> **两个新系统开工前必读本文件。** 只需理解本契约即可对接，无需读懂主系统全部代码。
+> **状态**：v2.0-draft（2026-08-22），是新开发唯一的**架构边界**，但不是可直接编码的字段契约。具体 OpenAPI/事件 JSON Schema、枚举和错误码冻结并升为 `v2.0` 后，各窗口才可并行实现。旧 v1 的 Redis/Celery 与只读 OA 方案仅用于现有节点过渡，不得复制到新系统。
 
 ---
 
-## 0. 总原则（三条铁律）
+## 1. 对接原则
 
-1. **契约先行、冻结后并行**：本文件定义的接口/数据结构一经冻结，各方照此开发；未冻结前不并行。
-2. **主系统是唯一真理**：字段口径、数据结构以主系统为准，新系统**不得自造字段/自改语义**。
-3. **契约版本化**：本文件顶部维护版本号；任何改动需通知三方并升版本。
-   - 当前版本：**v1.0（2026-08-17）**
-
-**仓库形态**：OA、手机采集各为**独立仓库/独立部署**，仅通过本契约（REST API + Redis 协议）依赖主系统，不共享主系统代码。
-
----
-
-## 1. 关键概念：两种"渠道"（务必分清）
-
-主系统里有两个**解耦**的"渠道"概念，别混：
-
-| 概念 | 字段 | 作用 | 取值示例 |
-|---|---|---|---|
-| **调度渠道** | `channel` | 决定用哪组关键词、按什么周期领词循环 | `souyisou`(PC搜一搜) / `sogou`(搜狗) / `souyisou_mobile`(手机搜一搜,新增) |
-| **来源渠道** | `source_channel` | 数据来源标识，看板显示、去重区分 | `wechat_pc` / `weixin_mobile` / `sogou_weixin` |
-
-- **PC搜一搜** = 调度渠道 `souyisou` + 来源 `wechat_pc`
-- **手机搜一搜** = 调度渠道 `souyisou_mobile` + 来源 `weixin_mobile`
-- 二者**共用同一批关键词**，但**各自独立周期、各自把每个词搜一遍**（方案 B），重复结果由主系统三层去重自动合并。
+1. **契约先行**：接口、事件和错误语义冻结后才能由多个窗口并行实现；变更必须兼容或升版本。
+2. **租户强制**：调用方不能用任意请求参数切换公司；租户来自受信身份，服务端仍执行角色授权和 PostgreSQL RLS。
+3. **至少一次投递 + 业务幂等**：网络重试是正常情况，任何重复请求不得重复建文档、重复调用同版本 LLM、重复建租户候选或商机。
+4. **不共享内部设施**：外部节点和 OA/CRM 不获得数据库、Redis、Celery 或内部表结构；只使用 HTTPS API 或版本化事件。
+5. **证据不丢失**：标准化数据必须能回溯到原文、来源、采集节点和抓取时间。
+6. **凭据不入库**：真实地址、密钥和口令只通过密钥管理或部署环境注入。
 
 ---
 
-## 2. 方向一：手机采集系统 → 灌入主系统（inbound）
+## 2. 共享语义
 
-### 2.1 架构（务必走此管道，禁止直连数据库）
-
-```
-手机采集App
-  ├─(1) 领词      claim_task(channel="souyisou_mobile", ...)   ← 走 Redis
-  ├─(2) 采集      按关键词在手机微信搜一搜抓文章
-  ├─(3) 投递入库  send_task("wxsearch.tasks.process_article_task", [payload])  ← 走 Redis
-  │                 → 主系统 worker 执行【三层去重 + AI评分 + 入库 + 上看板】
-  ├─(4) 上报      report_result(keyword, count, success, channel="souyisou_mobile", ...)
-  └─(5) 心跳      heartbeat_device(device_id, device_type="phone", channel="souyisou_mobile", ...)
-```
-
-**好处**：手机端只管"领词→采集→投递"，去重/AI清洗/看板/反馈**全部复用主系统，零额外开发**。
-
-### 2.2 投递契约（核心）
-
-用轻量 Celery 生产者按**任务名**投递，**不要 import 主系统代码**（避免拉入 psycopg2 等依赖）：
-
-```python
-from celery import Celery
-app = Celery("mobile_producer", broker=REDIS_URL, backend=REDIS_URL_DB1)
-app.send_task("wxsearch.tasks.process_article_task", args=[payload_json])
-```
-
-**payload（JSON 字符串）字段约定**：
-
-| 字段 | 必填 | 类型 | 说明 |
-|---|---|---|---|
-| `title` | ✅ | str | 文章标题 |
-| `content` | ✅ | str | 正文（HTML 或纯文本） |
-| `url` | ✅ | str | 原文链接（手机搜一搜的 mp 真链） |
-| `source_channel` | ✅ | str | **固定填 `weixin_mobile`** |
-| `keyword` | ✅ | str | 本条来自哪个关键词 |
-| `account` | 选 | str | 公众号名 |
-| `account_id` | 选 | str | `__biz` |
-| `publish_time` | 选 | str | 发布时间字符串 |
-| `summary` | 选 | str | 摘要（不填主系统自动取正文前 500 字） |
-| `collected_at` | 选 | str(ISO) | 抓取时刻，建议抓到即填 |
-
-> 不要传 `created_at`（由主系统入库时自动生成）。
-
-**返回**（`wait_result=True` 时同步返回）：`{"success": bool, "reason": str, "id": int}`。`success=false` 且 `reason` 含 `duplicate` 表示被去重，属正常。
-
-### 2.3 调度契约（领词/上报/心跳）
-
-复用 `DistributedTaskScheduler`（走 Redis，**不直连 PG**）。参考实现直接照抄：
-- `wxsearch/unattended.py`（无人值守循环骨架，**首选模板**）
-- `wxsearch/sogou_loop.py`（常驻循环 + 自重启）
-- `wxsearch/distributed_sink.py`（投递封装）
-
-关键方法签名：
-
-| 方法 | 参数 | 用途 |
+| 概念 | 说明 | 隔离范围 |
 |---|---|---|
-| `claim_task(channel, vm_instance_id, max_keywords)` | channel=`souyisou_mobile` | 领一批词（分布式锁防争抢） |
-| `report_result(keyword, articles_count, success, error_message, device_id, channel)` | channel=`souyisou_mobile` | 上报单词结果 |
-| `heartbeat_device(device_id, device_type, channel, current_keyword)` | device_type=`phone`、channel=`souyisou_mobile` | 心跳（设备监控页可见） |
+| `source_document` | 一次采集得到的原始文章/网页证据 | 公共情报层 |
+| `event_series` | 可持续复办的活动系列和周期规律 | 公共情报层 |
+| `event_edition` | 从一篇或多篇证据聚合出的某年/某届具体活动 | 公共情报层 |
+| `organizer` | 主办方实体，可关联活动系列和届次 | 公共情报层 |
+| `public_contact/contact_evidence` | 公开联系人及带来源、时间、可信度的联系方式证据 | 公共情报层 |
+| `tenant_resource_grant` | 某公司对活动届次的可见/使用授权 | 租户私有 |
+| `tenant_candidate` | 某家公司是否应审核该活动的候选 | 租户私有 |
+| `tenant_review` | 资源审核员的核实结论与原因 | 租户私有 |
+| `opportunity` | 审核通过后交给业务员的销售商机 | 租户私有 |
+| `activity/outcome` | 联系、提醒、报价、成交/流失及原因 | 租户私有 |
 
-- `device_id` / `vm_instance_id`：每台手机唯一（如 `phone-01`、`phone-02`），**切勿重复**（克隆机重号会引发领词冲突）。
-- 端点：`REDIS_URL`（与主系统同一 Redis）。任务名固定 `wxsearch.tasks.process_article_task`。
-
-### 2.4 主系统侧"地基"（我负责，手机端开工前完成）
-- [ ] 播种新调度渠道 `souyisou_mobile`：挂与 `souyisou` 相同的关键词组，设默认循环周期（建议 20 分钟，可调）。
-- [ ] 确认 `weixin_mobile` 来源渠道在看板/去重/导出中显示为"微信搜一搜(手机)"（名称与图标映射已预留，验证即可）。
+同一 `event_edition` 可以为三家公司各产生一条授权和 `tenant_candidate`，各自审核、分配和跟进；公司之间不能读取对方状态。公司内部同一届活动默认只有一个活跃 `opportunity`。
 
 ---
 
-## 3. 方向二：OA 系统 ← 读取主系统线索（outbound，只读）
+## 3. 采集连接器 → 平台
 
-### 3.1 接口
+### 3.1 目标链路
 
-- **Base URL**：`https://leads.yixiua.com/api/v1`
-- **接口契约**：主系统基于 FastAPI，自带机读契约：
-  - `https://leads.yixiua.com/openapi.json`（OpenAPI 规范，可直接生成客户端）
-  - `https://leads.yixiua.com/docs`（Swagger 交互文档）
+```text
+连接器 -> 领取任务/租约 API -> 渠道采集 -> 提交原始文档 API
+      -> 标准化/去重 -> 活动与主办方解析 -> AI 研判 -> 租户候选分发
+```
 
-**只读端点（OA 用这些）**：
+- 微信搜一搜 PC 是当前主连接器；手机、网站、新闻、搜索引擎等使用同一连接器协议。
+- 实时任务使用高优先级队列；近 3 年历史回溯使用低优先级、可暂停和可续跑队列。
+- 现有受控局域网 PC 节点可以在迁移期继续按任务名投递 Celery，但这不是新节点的开发模板。
 
-| 方法 | 路径 | 用途 |
+### 3.2 标准原始文档（v2 draft）
+
+```json
+{
+  "contract_version": "2.0",
+  "idempotency_key": "connector-defined-stable-key",
+  "connector_id": "wechat-pc-01",
+  "task_lease_id": "server-issued-lease-id",
+  "source_channel": "wechat_pc",
+  "source_url": "https://example.invalid/article",
+  "source_external_id": "optional-source-id",
+  "title": "article title",
+  "content": "raw html or text",
+  "content_type": "text/html",
+  "content_hash": "sha256-of-raw-content",
+  "language": "zh-CN",
+  "author_or_account": "account name",
+  "published_at": "2026-08-22T08:00:00+08:00",
+  "collected_at": "2026-08-22T09:00:00+08:00",
+  "matched_keywords": ["评选", "投票"],
+  "collection_mode": "realtime_signal",
+  "backfill_batch_id": null,
+  "source_metadata": {}
+}
+```
+
+约束：
+
+- 必填字段、长度、时间格式、允许的 `source_channel` 和 `collection_mode` 由最终 JSON Schema/OpenAPI 定义；首版取值为 `realtime_signal`、`historical_backfill`。
+- `idempotency_key` 在同一连接器内稳定；平台还会基于规范 URL、来源 ID 和内容指纹做二次去重。
+- `source_metadata` 只承载渠道特有原始字段，不能借此绕过正式字段和版本流程；正文格式、编码、单条/批量大小限制由最终 Schema 冻结。
+- 资源作用域不接受调用方任意提交的 `tenant_id`/租户列表。服务端根据受信 `task_lease_id`、连接器身份或已认证上传者推导 `public`/`tenant_private` 作用域及授权；文档、AI 结果和后续实体继承该作用域，防止私有信源误入共享池。
+- `historical_backfill` 必须带服务端签发的 `backfill_batch_id`；批次冻结 `as_of`、`range_start`、`range_end` 和主题切片，确保暂停续跑后的统计口径不漂移。
+- 服务端接收成功不代表已成为线索；后续处理状态通过回执 ID 查询或事件通知。
+
+### 3.3 HTTPS 接入要求
+
+- 连接器使用短期凭据或签名请求；凭据绑定 `connector_id`、允许渠道、任务/资源作用域和速率。
+- 每次提交携带 `Idempotency-Key`、时间戳和请求签名；服务端执行重放保护、大小限制、限流和审计。
+- 批量提交必须逐条返回状态，单条坏数据不能让整批结果语义不明。
+- 任务领取采用有期限租约；节点上报成功、失败、可重试错误和心跳，租约过期后任务可重领。
+- 禁止把 Redis、Celery Broker、PostgreSQL 暴露到公网或交给第三方节点。
+
+---
+
+## 4. 平台 ↔ OA/CRM
+
+OA/CRM 的首要范围是资源审核、销售待办和客户跟进，不是另建一套重复的线索主数据。
+
+### 4.1 读取
+
+- 使用版本化、分页的租户 API 读取本公司候选、审核、商机、主办方公共画像和授权的联系证据。
+- API 身份绑定租户、角色和权限范围；查询参数只能缩小已授权范围，不能扩大范围。
+- 响应包含稳定 ID、`updated_at` 和游标，支持可靠增量同步；不得以直接查内部表或只读视图作为默认集成方式。
+
+### 4.2 写入与回流
+
+- 审核结论、分配、联系记录、阶段、报价、成交/流失通过命令式 API 写入，并要求幂等键和乐观并发版本。
+- 每次状态变化记录操作者、来源系统、发生时间和审计轨迹。
+- 成交/流失属于智能闭环的高价值反馈，但只能进入对应租户的私有反馈域；跨租户训练使用前必须先做明确的治理与脱敏决策。
+
+### 4.3 事件（需要异步集成时）
+
+建议事件名：`candidate.created.v1`、`review.completed.v1`、`opportunity.assigned.v1`、`opportunity.stage_changed.v1`、`opportunity.closed.v1`。
+
+每个事件至少包含：
+
+- `message_id`（消息唯一 ID）、`event_type`、`occurred_at`、`schema_version`；
+- `tenant_id`、业务聚合 ID、聚合版本；
+- `correlation_id`/`causation_id`，用于追踪和防循环；
+- 最小必要载荷，不在跨系统消息中传播无关联系方式或隐私字段。
+
+消费者必须按 `message_id` 幂等消费；生产方使用事务 Outbox 或等效机制，避免“数据库已提交但消息未发出”。业务活动键始终命名为 `event_edition_id`，不得与消息 ID 混用。
+
+---
+
+## 5. 资源分发策略
+
+| 策略 | 语义 | 当前状态 |
 |---|---|---|
-| GET | `/leads/` | 线索列表（分页/筛选/排序，参数见 OpenAPI） |
-| GET | `/leads/export` | 按条件导出 CSV（全量，不分页） |
-| GET | `/leads/{id}/sources` | 某活动的多来源（同活动跨渠道转载） |
+| `shared_competition` | 所有符合条件的租户分别得到候选 | 当前默认 |
+| `tenant_private` | 仅资源所属公司可见 | 用于租户自建关键词/私有补充 |
+| `selected_tenants` | 仅指定公司得到候选 | 预留 |
+| `exclusive` | 只允许一个公司获得资源 | 预留，未有商业规则不得启用 |
 
-> OA **只读**：不调用任何 PATCH/POST/DELETE。跟进状态若要回写，属于后续需求，需另立契约（当前不做）。
-
-### 3.2 鉴权（机器对机器，地基待加）
-
-现有登录是浏览器 session cookie，OA 是服务端调用，需专用 **API Token**：
-
-- **约定**：请求头 `X-API-Key: <token>`；主系统校验通过即放行只读接口。
-- Token 由主系统签发给 OA（一 OA 一 key，可吊销）。
-- **地基待做（我负责）**：新增 API Key 校验（不动现有 cookie 登录），签发一个 OA 专用只读 key。
-
-### 3.3 线索字段口径（`qualified_leads` 关键字段）
-
-| 字段 | 含义 |
-|---|---|
-| `id` | 线索唯一 ID |
-| `title` / `event_name` | 文章标题 / 提炼出的活动名称 |
-| `keyword` | 采集关键词 |
-| `account` / `source_channel` | 公众号 / 来源渠道 |
-| `intent_category` | 意图：评选/投票/征集/活动/资讯/其他 |
-| `resource_level` | 资源质量：excellent(优)/normal(普)/poor(低) |
-| `activity_region` / `recurrence` / `activity_status` | 地区 / 届次 / 活动状态（LLM判定） |
-| `is_online_voting` / `online_voting_url` | 是否有线上投票 / 投票链接 |
-| `priority_level` / `priority_score` | 优先级 P0/P1/P2 / 分数 |
-| `publish_time` / `collected_at` | 发布时间 / 采集时间 |
-
-> 完整字段与类型以 `/openapi.json` 及实际响应为准。渠道值 → 友好名的映射由主系统提供（如 `wechat_pc`→"微信搜一搜(PC)"）。
+授权/候选的稳定幂等键覆盖 `(tenant_id, event_edition_id)`；`policy_version` 记录在授权历史中，不参与生成重复候选。策略变更必须通过显式授予、撤销或 supersede 流程，不能静默改写已经存在的审核和商机数据。
 
 ---
 
-## 4. 契约冻结与变更流程
+## 6. 错误与重试
 
-- **冻结范围**：第 2 节 payload/调度签名、第 3 节端点/鉴权/字段口径。
-- **冻结后**两个窗口即可并行开发。
-- **变更**：需改契约时，改本文件 + 升版本号 + 通知三方；禁止各窗口私自加字段/改语义。
-- **验收对接**：两系统开发完成后，由主系统侧按本契约逐项验证再接入。
+| 类型 | 示例 | 调用方动作 |
+|---|---|---|
+| 参数错误 | Schema 不合法、未知渠道 | 修正后重提，不盲目重试 |
+| 未认证/未授权 | 签名错误、租户越权 | 立即停止并告警 |
+| 冲突 | 幂等键载荷不一致、版本冲突 | 查询现状后人工/业务合并 |
+| 限流/暂时故障 | 429、超时、5xx | 指数退避并保留原幂等键 |
+| 已接收处理中 | 202 | 用回执查询或等待完成事件 |
 
----
-
-## 5. 地基清单（主系统侧，我负责，两窗口开工前完成）
-
-| # | 事项 | 服务对象 | 状态 |
-|---|---|---|---|
-| 1 | 播种 `souyisou_mobile` 调度渠道（共用关键词组、独立周期） | 手机采集 | ⬜ 待做 |
-| 2 | 验证 `weixin_mobile` 来源渠道看板/去重/导出显示正常 | 手机采集 | ⬜ 待做 |
-| 3 | 新增 API Key 只读鉴权 + 签发 OA 专用 key | OA | ⬜ 待做 |
-| 4 | 冻结本契约 v1.0 | 双方 | ✅ 本文件 |
+日志和错误响应不得返回凭据、数据库连接、跨租户 ID 列表或原始堆栈。
 
 ---
 
-## 6. 待确认（不影响开工，可后补）
-- 手机搜一搜 `souyisou_mobile` 的循环周期（默认拟 20 分钟）。
-- OA 是否需要"按团队/权限过滤线索"（当前只读为全量）。
-- 后续若 OA 要回写跟进状态，另立《OA 回写契约》。
+## 7. 契约冻结与验收
+
+v2 从 draft 升为 frozen 前必须同时交付：
+
+- OpenAPI 3.x 与 JSON Schema、示例请求/响应、错误码和兼容策略；
+- 生产者与消费者契约测试；
+- 重复提交、乱序、超时重试和部分失败测试；
+- 三租户正向/反向越权测试；
+- 性能与限流基线、审计与告警验证；
+- v1 过渡节点迁移、灰度和回滚步骤。
+
+契约变更由集成负责人串行合并。新增可选字段可做兼容小版本；删除字段、改类型、改语义或扩大权限必须升大版本，并保留明确的淘汰窗口。

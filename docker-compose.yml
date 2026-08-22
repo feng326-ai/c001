@@ -87,7 +87,7 @@ services:
       # 设备在线/离线判定阈值（秒）。需大于单个关键词最长采集耗时，避免长采集期间心跳滞后被误判离线。
       DEVICE_ONLINE_TIMEOUT: ${DEVICE_ONLINE_TIMEOUT:-600}
       DEVICE_FAIL_THRESHOLD: ${DEVICE_FAIL_THRESHOLD:-3}
-      # 测试采集库 -> 正式业务库同步（默认关闭；真实密钥只放服务器 .env）。
+      # 本地生产采集库 -> 云端正式业务库同步（默认关闭；真实密钥只放服务器 .env）。
       PROD_SYNC_ENABLED: ${PROD_SYNC_ENABLED:-false}
       PROD_SYNC_URL: ${PROD_SYNC_URL:-}
       PROD_SYNC_SECRET: ${PROD_SYNC_SECRET:-}
