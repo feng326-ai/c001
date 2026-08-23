@@ -147,3 +147,14 @@ def test_backend_release_mounts_git_artifact_read_only():
     assert "${BACKEND_RELEASE_DIR:?BACKEND_RELEASE_DIR_required}/docs" in compose
     assert compose.count(":ro") == 2
     assert "${BACKEND_RUNTIME_DIR:?BACKEND_RUNTIME_DIR_required}/logs" in compose
+
+
+def test_llm_budget_can_finish_reasoning_and_structured_answer():
+    config_path = (
+        Path(__file__).resolve().parents[1]
+        / "wxsearch"
+        / "config"
+        / "rule_config.json"
+    )
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["llm"]["max_tokens"] >= 4096
