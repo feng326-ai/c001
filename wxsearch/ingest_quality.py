@@ -21,6 +21,10 @@ REALTIME_MODE = "realtime_signal"
 HISTORICAL_MODE = "historical_backfill"
 ALLOWED_MODES = {REALTIME_MODE, HISTORICAL_MODE}
 
+# 业务已明确停用的宽泛词。只拦精确词或完全由这些词组成的组合，避免误伤
+# “推荐申报”“先进典型评选”等带明确业务意图的长词。
+BLOCKED_GENERIC_KEYWORDS = frozenset({"全国", "先进", "推荐"})
+
 
 def _truthy(value) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -30,6 +34,19 @@ def _truthy(value) -> bool:
 class AdmissionDecision:
     accepted: bool
     reason: str
+
+
+def evaluate_keyword(keyword: str) -> AdmissionDecision:
+    """在打开搜一搜之前拒绝业务已停用的宽泛关键词。"""
+    normalized = " ".join(str(keyword or "").split())
+    if not normalized:
+        return AdmissionDecision(False, "missing_keyword")
+    tokens = normalized.split(" ")
+    if normalized in BLOCKED_GENERIC_KEYWORDS or (
+        len(tokens) > 1 and all(token in BLOCKED_GENERIC_KEYWORDS for token in tokens)
+    ):
+        return AdmissionDecision(False, "blocked_generic_keyword")
+    return AdmissionDecision(True, "keyword_allowed")
 
 
 # “推荐、全国、先进、参与”等普通词故意不在意图词内；单独出现不能证明存在评选业务。

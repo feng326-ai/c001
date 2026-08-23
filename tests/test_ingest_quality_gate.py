@@ -9,7 +9,7 @@ import pytest
 
 from wxsearch.db import Article as CollectorArticle
 from wxsearch.distributed_sink import DistributedSink
-from wxsearch.ingest_quality import evaluate_article
+from wxsearch.ingest_quality import evaluate_article, evaluate_keyword
 from wxsearch.models import Article
 
 
@@ -49,6 +49,16 @@ def test_common_recommendation_words_do_not_count_as_business_intent():
     decision = evaluate_article(article, now=NOW)
     assert decision.accepted is False
     assert decision.reason == "missing_business_intent"
+
+
+def test_explicitly_blocked_generic_keywords_are_rejected_before_search():
+    for keyword in ("全国", "先进", "推荐", "全国 先进 推荐", " 全国   推荐 "):
+        decision = evaluate_keyword(keyword)
+        assert decision.accepted is False
+        assert decision.reason == "blocked_generic_keyword"
+
+    assert evaluate_keyword("推荐申报").accepted is True
+    assert evaluate_keyword("先进典型评选").accepted is True
 
 
 def test_realtime_requires_parseable_and_fresh_publish_time():

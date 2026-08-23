@@ -8,7 +8,7 @@ from .config import AppConfig
 from .db import Article, Database
 from .wechat_driver import DriverError, WeChatSearchDriver
 from .ai_filters.rule_filter import RuleBasedFilter
-from .ingest_quality import evaluate_article
+from .ingest_quality import evaluate_article, evaluate_keyword
 
 
 class Collector:
@@ -47,6 +47,12 @@ class Collector:
         for keyword in self.cfg.keywords:
             self.log.info("=" * 50)
             self.log.info(f"开始采集关键词：{keyword}")
+            keyword_decision = evaluate_keyword(keyword)
+            if not keyword_decision.accepted:
+                self.log.warning(
+                    f"关键词「{keyword}」已在搜索前拒绝：{keyword_decision.reason}"
+                )
+                continue
             try:
                 new = self._collect_one(keyword)
                 total_new += new
