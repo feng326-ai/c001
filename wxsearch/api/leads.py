@@ -8,12 +8,13 @@
 所有访问必须走 execute_query / execute_write（详见 db_connector.py）。
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends, Request
-from fastapi.responses import Response
-from typing import Optional
 import csv
 import io
 from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from ..db_connector import DatabaseConnector
 from .auth import get_current_user, require_admin
@@ -41,6 +42,12 @@ def _upsert_state(db, user_id: int, lead_id: int, field: str, value):
     )
 
 router = APIRouter()
+
+
+def _require_quarantine_access(include_non_lead: bool, current_user: dict) -> None:
+    """Only administrators may inspect or export quarantined rule drafts."""
+    if include_non_lead and current_user.get("role") not in {"admin", "super"}:
+        raise HTTPException(status_code=403, detail="查看隔离线索需要管理员权限")
 
 # 列表返回给看板的列（顺序需与 SELECT 一致，用于把元组行拼成 dict）。
 _LEAD_COLUMNS = [
@@ -96,8 +103,8 @@ def _build_where(status: Optional[str], category: Optional[str], search: Optiona
     """根据筛选参数拼装 WHERE 子句与参数列表（列表查询与导出共用，避免两处逻辑漂移）。
 
     prefix: 列名前缀（如 'q.'），用于 JOIN 查询时消除列名歧义；缺省不加前缀。
-    include_non_lead: 默认 False 隐藏“LLM 已清洗且判定非线索”的条目（广告/软文等）；
-                     未清洗的仍保留，避免清洗前消失。传 True 可查看全部。"""
+    include_non_lead: 默认 False 只展示“LLM 已完成且判定有价值”的条目；
+                     管理员显式传 True 才可查看隔离中的未清洗/失败/非线索。"""
     where = "WHERE 1=1"
     params: list = []
     # 状态四态(个人)：未处理/已处理/所有线索(不含回收站)/回收站；缺省按未处理。
@@ -147,8 +154,11 @@ def _build_where(status: Optional[str], category: Optional[str], search: Optiona
             where += f" AND {prefix}activity_status = %s"
             params.append(activity_status)
     if not include_non_lead:
-        # 隐藏 LLM 清洗后确认无价值的（广告/软文）：仅当 llm_status='done' 且 has_lead_value=FALSE 时排除。
-        where += f" AND NOT ({prefix}llm_status = 'done' AND {prefix}has_lead_value = FALSE)"
+        # 质量故障必须 fail closed：规则草稿、清洗失败和明确非线索都不进入公海。
+        where += (
+            f" AND {prefix}llm_status = 'done'"
+            f" AND {prefix}has_lead_value = TRUE"
+        )
     return where, params
 
 
@@ -163,7 +173,7 @@ async def list_leads(
     voting_not_started: bool = False,      # AI 活动库口径：排除活动状态进行中/已结束
     sort_by: Optional[str] = None,      # 排序列：priority_score|publish_time|collected_at|created_at
     sort_dir: Optional[str] = None,     # asc|desc
-    include_non_lead: bool = False,     # 默认隐藏 LLM 已判定非线索（广告/软文）；true 显示全部
+    include_non_lead: bool = False,     # 仅管理员诊断；默认只看 LLM done + 有价值
     group_by_event: bool = True,        # 默认按活动名归并同活动多来源（跨公众号转载）
     region: Optional[str] = None,       # 地区筛选：全国/省/市/县/镇
     resource_level: Optional[str] = None,  # 资源质量筛选：excellent/normal/poor（快捷“优”）
@@ -179,15 +189,19 @@ async def list_leads(
     获取线索列表（默认按采集入库时间倒序，可由 sort_by/sort_dir 改变）。
 
     GET /api/v1/leads/?limit=20&offset=0&sort_by=collected_at&sort_dir=desc
-    默认过滤掉 LLM 清洗后确认无价值的广告/软文（has_lead_value=false）；include_non_lead=true 可查全部。
+    默认只返回 LLM 清洗完成且判定有价值的线索；管理员 include_non_lead=true 可查隔离数据。
     默认按活动名(event_name 归一)将同一活动的多公众号转载折叠为一条（带 group_count 来源数）；group_by_event=false 不折叠。
     服务端排序覆盖全部分页（非仅当前页）。
     """
+    _require_quarantine_access(include_non_lead, current_user)
     db = DatabaseConnector()
     me = current_user["id"]
 
-    where, params = _build_where(status, category, search, online_voting=online_voting, include_non_lead=include_non_lead, region=region, resource_level=resource_level, recurrence=recurrence, in_library=in_library, days=days, voting_not_started=voting_not_started, activity_status=activity_status, exclude_in_library=exclude_in_library)
-    where_q, _ = _build_where(status, category, search, "q.", online_voting, include_non_lead, region=region, resource_level=resource_level, recurrence=recurrence, in_library=in_library, days=days, voting_not_started=voting_not_started, activity_status=activity_status, exclude_in_library=exclude_in_library)
+    # 资源池需要读取 LLM 已确认的非即时线索；先放开默认 true 过滤，再由
+    # 下面的 resource 条件精确收窄，绝不放入 pending/fail。
+    diagnostic_quality = include_non_lead or filter_mode == "resource"
+    where, params = _build_where(status, category, search, online_voting=online_voting, include_non_lead=diagnostic_quality, region=region, resource_level=resource_level, recurrence=recurrence, in_library=in_library, days=days, voting_not_started=voting_not_started, activity_status=activity_status, exclude_in_library=exclude_in_library)
+    where_q, _ = _build_where(status, category, search, "q.", online_voting, diagnostic_quality, region=region, resource_level=resource_level, recurrence=recurrence, in_library=in_library, days=days, voting_not_started=voting_not_started, activity_status=activity_status, exclude_in_library=exclude_in_library)
     # 视图模式过滤（双轨制架构）
     if filter_mode == 'business':  # 商机池：有效且有投票
         where += " AND has_lead_value=TRUE AND COALESCE(voting_status,'')='has'"
@@ -196,8 +210,8 @@ async def list_leads(
         where += " AND has_lead_value=TRUE AND COALESCE(voting_status,'')='suspect'"
         where_q += " AND q.has_lead_value=TRUE AND COALESCE(q.voting_status,'')='suspect'"
     elif filter_mode == 'resource':  # 资源池：进行中/已结束的活动
-        where += " AND activity_status IN ('进行中','已结束') AND has_lead_value=FALSE"
-        where_q += " AND q.activity_status IN ('进行中','已结束') AND q.has_lead_value=FALSE"
+        where += " AND llm_status='done' AND activity_status IN ('进行中','已结束') AND has_lead_value=FALSE"
+        where_q += " AND q.llm_status='done' AND q.activity_status IN ('进行中','已结束') AND q.has_lead_value=FALSE"
 
     # 排序：白名单列 + 方向，缺省或非法则回退采集入库时间降序。
     sort_col = _SORTABLE.get(sort_by or "")   # 形如 q.xxx
@@ -375,7 +389,7 @@ async def export_leads(
     online_voting: Optional[bool] = None,
     voting_not_started: bool = False,  # AI 活动库口径：排除活动状态进行中/已结束（与列表同口径）
     cols: Optional[str] = None,         # 逗号分隔的导出列 key（默认全部）
-    include_non_lead: bool = False,     # 与列表一致：默认不导广告/非线索
+    include_non_lead: bool = False,     # 仅管理员诊断；默认只导出 LLM done + 有价值
     region: Optional[str] = None,       # 地区筛选：全国/省/市/县/镇
     in_library: Optional[bool] = None,  # 我的活动库导出
     activity_status: Optional[str] = None,  # 活动阶段筛选
@@ -387,6 +401,7 @@ async def export_leads(
     GET /api/v1/leads/export?cols=id,event_name,title&status=&category=评选
     cols 选定导出列（白名单，缺省全部）；带 UTF-8 BOM 便于 Excel 直接打开。
     """
+    _require_quarantine_access(include_non_lead, current_user)
     db = DatabaseConnector()
     me = current_user["id"]
     where, params = _build_where(status, category, search, online_voting=online_voting, include_non_lead=include_non_lead, region=region, voting_not_started=voting_not_started, in_library=in_library, activity_status=activity_status, exclude_in_library=exclude_in_library)

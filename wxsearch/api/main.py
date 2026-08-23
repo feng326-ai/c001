@@ -1120,15 +1120,21 @@ async def get_dashboard_stats(request: Request):
     )[0][0]
     
     # ---- 线索侧（看板卡片）----
-    stats["total_leads"] = db.execute_query("SELECT COUNT(*) FROM qualified_leads")[0][0]
+    stats["total_leads"] = db.execute_query(
+        "SELECT COUNT(*) FROM qualified_leads "
+        "WHERE llm_status='done' AND has_lead_value=TRUE"
+    )[0][0]
     # 今日入库
     stats["today_count"] = db.execute_query(
-        "SELECT COUNT(*) FROM qualified_leads WHERE created_at >= CURRENT_DATE"
+        "SELECT COUNT(*) FROM qualified_leads "
+        "WHERE llm_status='done' AND has_lead_value=TRUE "
+        "AND created_at >= CURRENT_DATE"
     )[0][0]
     # 昨日入库（[CURRENT_DATE-1, CURRENT_DATE)）
     stats["yesterday_count"] = db.execute_query(
         "SELECT COUNT(*) FROM qualified_leads "
-        "WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE"
+        "WHERE llm_status='done' AND has_lead_value=TRUE "
+        "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE"
     )[0][0]
     # AI 活动库数量（有投票 + 未开始，且当前用户未入库）
     if me_id:
@@ -1136,6 +1142,7 @@ async def get_dashboard_stats(request: Request):
             "SELECT COUNT(*) FROM qualified_leads q "
             "LEFT JOIN lead_user_state s ON s.lead_id = q.id AND s.user_id = %s "
             "WHERE q.is_online_voting = TRUE "
+            "AND q.llm_status='done' AND q.has_lead_value=TRUE "
             "AND COALESCE(q.activity_status, '') NOT IN ('进行中', '已结束') "
             "AND COALESCE(s.in_library, FALSE) = FALSE",
             (me_id,)
@@ -1166,6 +1173,7 @@ async def get_dashboard_stats(request: Request):
             "SELECT COUNT(*) FROM qualified_leads q "
             "JOIN lead_user_state s ON s.lead_id = q.id AND s.user_id = %s "
             "WHERE q.is_online_voting = TRUE "
+            "AND q.llm_status='done' AND q.has_lead_value=TRUE "
             "AND COALESCE(q.activity_status, '') NOT IN ('进行中', '已结束') "
             "AND COALESCE(s.in_library, FALSE) = FALSE "
             "AND s.processed = TRUE",
@@ -1176,6 +1184,7 @@ async def get_dashboard_stats(request: Request):
             "SELECT COUNT(*) FROM qualified_leads q "
             "LEFT JOIN lead_user_state s ON s.lead_id = q.id AND s.user_id = %s "
             "WHERE q.is_online_voting = TRUE "
+            "AND q.llm_status='done' AND q.has_lead_value=TRUE "
             "AND COALESCE(q.activity_status, '') NOT IN ('进行中', '已结束') "
             "AND COALESCE(s.in_library, FALSE) = FALSE "
             "AND COALESCE(s.processed, FALSE) = FALSE",
@@ -1186,6 +1195,7 @@ async def get_dashboard_stats(request: Request):
             "SELECT COUNT(*) FROM qualified_leads q "
             "LEFT JOIN lead_user_state s ON s.lead_id = q.id AND s.user_id = %s "
             "WHERE q.is_online_voting = TRUE "
+            "AND q.llm_status='done' AND q.has_lead_value=TRUE "
             "AND COALESCE(q.activity_status, '') NOT IN ('进行中', '已结束') "
             "AND COALESCE(s.in_library, FALSE) = FALSE "
             "AND q.created_at >= CURRENT_DATE",
@@ -1196,6 +1206,7 @@ async def get_dashboard_stats(request: Request):
             "SELECT COUNT(*) FROM qualified_leads q "
             "LEFT JOIN lead_user_state s ON s.lead_id = q.id AND s.user_id = %s "
             "WHERE q.is_online_voting = TRUE "
+            "AND q.llm_status='done' AND q.has_lead_value=TRUE "
             "AND COALESCE(q.activity_status, '') NOT IN ('进行中', '已结束') "
             "AND COALESCE(s.in_library, FALSE) = FALSE "
             "AND q.created_at >= CURRENT_DATE - INTERVAL '1 day' AND q.created_at < CURRENT_DATE",

@@ -466,7 +466,9 @@ def test_database_or_commit_failure_never_leaks_connection_details(
     monkeypatch,
 ) -> None:
     _enable(monkeypatch)
-    secret_dsn = "postgresql://distributor:super-secret@example.invalid/review"
+    # A scanner-approved placeholder is sufficient to prove that database
+    # exception details never escape through the public error contract.
+    secret_dsn = "postgresql://distributor:test-only@example.invalid/review"
     for step, expected in (
         (
             ScriptedStep(execute_error=FakeDatabaseError(secret_dsn)),
@@ -483,6 +485,6 @@ def test_database_or_commit_failure_never_leaks_connection_details(
                 worker_id="qa-worker"
             )
         assert str(exc_info.value) == expected
-        assert "super-secret" not in str(exc_info.value)
+        assert "test-only" not in str(exc_info.value)
         assert ("rollback",) in factory.connections[0].events
         assert factory.connections[0].closed is True

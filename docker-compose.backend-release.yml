@@ -1,0 +1,6 @@
+services:
+  backend:
+    volumes:
+      - ${BACKEND_RELEASE_DIR:?BACKEND_RELEASE_DIR_required}/wxsearch:/app/wxsearch:ro
+      - ${BACKEND_RELEASE_DIR:?BACKEND_RELEASE_DIR_required}/docs:/app/docs:ro
+      - ${BACKEND_RUNTIME_DIR:?BACKEND_RUNTIME_DIR_required}/logs:/app/logs

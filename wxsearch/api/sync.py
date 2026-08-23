@@ -16,8 +16,8 @@ from datetime import datetime
 from typing import Any
 
 import psycopg2
-from psycopg2.extras import Json
 from fastapi import APIRouter, HTTPException, Request
+from psycopg2.extras import Json
 
 
 router = APIRouter()
@@ -49,6 +49,11 @@ _LEAD_FIELDS = (
 )
 
 _JSON_FIELDS = {"scoring_breakdown", "organizer_contact"}
+
+
+def _lead_payload_is_publishable(payload: dict[str, Any]) -> bool:
+    """Fail closed unless the source explicitly completed LLM cleaning."""
+    return str(payload.get("llm_status") or "").strip().lower() == "done"
 
 
 def _connect():
@@ -150,7 +155,11 @@ def _upsert_article(cur, payload: dict[str, Any]) -> int:
     return int(target_id)
 
 
-def _upsert_lead(cur, payload: dict[str, Any]) -> int:
+def _upsert_lead(cur, payload: dict[str, Any]) -> int | None:
+    # Defense in depth: an old/misconfigured sender must not bypass the source
+    # quality gate and create a business lead from a rule-only draft.
+    if not _lead_payload_is_publishable(payload):
+        return None
     try:
         source_uuid = uuid.UUID(str(payload.get("article_uuid")))
     except (TypeError, ValueError) as exc:
@@ -236,30 +245,35 @@ async def receive_sync_batch(request: Request):
             if cur.fetchone():
                 skipped.append(str(event_id))
                 continue
-            cur.execute(
-                "SELECT source_updated_at FROM production_sync_entity_versions "
-                "WHERE entity_type=%s AND entity_key=%s FOR UPDATE",
-                (entity_type, entity_key),
-            )
-            version_row = cur.fetchone()
-            if version_row and source_updated_at < version_row[0]:
+            # Do not advance the entity-version watermark for a quarantined lead:
+            # a later cleaned event may legitimately carry the same source time.
+            if entity_type == "lead" and not _lead_payload_is_publishable(payload):
                 skipped.append(str(event_id))
             else:
-                if entity_type == "article":
-                    _upsert_article(cur, payload)
-                else:
-                    _upsert_lead(cur, payload)
                 cur.execute(
-                    """
-                    INSERT INTO production_sync_entity_versions
-                        (entity_type,entity_key,source_updated_at,event_id)
-                    VALUES (%s,%s,%s,%s)
-                    ON CONFLICT (entity_type,entity_key) DO UPDATE
-                    SET source_updated_at=EXCLUDED.source_updated_at,event_id=EXCLUDED.event_id
-                    """,
-                    (entity_type, entity_key, source_updated_at, str(event_id)),
+                    "SELECT source_updated_at FROM production_sync_entity_versions "
+                    "WHERE entity_type=%s AND entity_key=%s FOR UPDATE",
+                    (entity_type, entity_key),
                 )
-                accepted.append(str(event_id))
+                version_row = cur.fetchone()
+                if version_row and source_updated_at < version_row[0]:
+                    skipped.append(str(event_id))
+                else:
+                    if entity_type == "article":
+                        _upsert_article(cur, payload)
+                    else:
+                        _upsert_lead(cur, payload)
+                    cur.execute(
+                        """
+                        INSERT INTO production_sync_entity_versions
+                            (entity_type,entity_key,source_updated_at,event_id)
+                        VALUES (%s,%s,%s,%s)
+                        ON CONFLICT (entity_type,entity_key) DO UPDATE
+                        SET source_updated_at=EXCLUDED.source_updated_at,event_id=EXCLUDED.event_id
+                        """,
+                        (entity_type, entity_key, source_updated_at, str(event_id)),
+                    )
+                    accepted.append(str(event_id))
 
             payload_hash = hashlib.sha256(
                 json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")

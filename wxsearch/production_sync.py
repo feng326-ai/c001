@@ -13,12 +13,61 @@ from typing import Any
 import psycopg2
 import requests
 
-
 log = logging.getLogger(__name__)
+
+_SUPPRESSED_REASON = "quality_gate:llm_not_done"
 
 
 def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _event_is_publishable(row) -> bool:
+    """Return whether an outbox row may cross into the business database.
+
+    Articles are evidence and may be synchronized immediately.  A lead is only
+    a business-facing projection after the asynchronous LLM pass completed;
+    ``pending``/``fail`` and legacy payloads without a status stay local.
+    """
+    entity_type = str(row[1] or "")
+    if entity_type != "lead":
+        return True
+    payload = row[4] if isinstance(row[4], dict) else {}
+    return str(payload.get("llm_status") or "").strip().lower() == "done"
+
+
+def _partition_quality_gate(rows):
+    publishable = []
+    suppressed_ids = []
+    for row in rows:
+        if _event_is_publishable(row):
+            publishable.append(row)
+        else:
+            suppressed_ids.append(str(row[0]))
+    return publishable, suppressed_ids
+
+
+def _mark_suppressed(conn, event_ids: list[str]) -> None:
+    """Acknowledge non-publishable legacy events without sending them.
+
+    Migration 020 has no ``suppressed`` status and later migrations are not yet
+    deployable, so ``sent`` is used as the terminal status while ``last_error``
+    retains an auditable quality-gate marker.  A later ``done`` update creates a
+    new outbox event and is sent normally.
+    """
+    if not event_ids:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE production_sync_outbox
+            SET status='sent', sent_at=NOW(), last_error=%s
+            WHERE event_id = ANY(%s::uuid[])
+              AND status IN ('pending', 'retry')
+            """,
+            (_SUPPRESSED_REASON, event_ids),
+        )
+    conn.commit()
 
 
 def _connect():
@@ -84,6 +133,20 @@ def sync_once(batch_size: int | None = None) -> dict[str, Any]:
         if not rows:
             return {"enabled": True, "sent": 0, "pending": 0}
 
+        rows, suppressed_ids = _partition_quality_gate(rows)
+        _mark_suppressed(conn, suppressed_ids)
+        if suppressed_ids:
+            log.warning(
+                "质量门禁抑制 %s 条未完成 LLM 清洗的 lead 同步事件",
+                len(suppressed_ids),
+            )
+        if not rows:
+            return {
+                "enabled": True,
+                "sent": 0,
+                "suppressed": len(suppressed_ids),
+            }
+
         events = [
             {
                 "event_id": row[0],
@@ -133,13 +196,24 @@ def sync_once(batch_size: int | None = None) -> dict[str, Any]:
             conn.commit()
             if missing_ids:
                 _mark_retry(conn, missing_ids, "receiver did not confirm event")
-            return {"enabled": True, "sent": len(sent_ids), "retry": len(missing_ids)}
+            return {
+                "enabled": True,
+                "sent": len(sent_ids),
+                "retry": len(missing_ids),
+                "suppressed": len(suppressed_ids),
+            }
         except Exception as exc:
             conn.rollback()
             event_ids = [event["event_id"] for event in events]
             _mark_retry(conn, event_ids, str(exc))
             log.warning("正式环境同步失败，已安排重试：%s", exc)
-            return {"enabled": True, "sent": 0, "retry": len(event_ids), "error": str(exc)}
+            return {
+                "enabled": True,
+                "sent": 0,
+                "retry": len(event_ids),
+                "suppressed": len(suppressed_ids),
+                "error": str(exc),
+            }
     finally:
         conn.close()
 

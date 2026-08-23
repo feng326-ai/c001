@@ -1,7 +1,10 @@
 services:
   celery-worker:
+    environment:
+      WXSEARCH_SECRETS_PATH: /run/secrets/wxsearch/secrets.json
     volumes:
       - /home/m/xiansuo/logs:/app/logs
       - ${COLLECT_RELEASE_DIR:?COLLECT_RELEASE_DIR_required}/wxsearch:/app/wxsearch:ro
       - ${COLLECT_RELEASE_DIR:?COLLECT_RELEASE_DIR_required}/docs:/app/docs:ro
       - /home/m/xiansuo/backups:/app/backups
+      - ${COLLECT_SECRETS_DIR:?COLLECT_SECRETS_DIR_required}:/run/secrets/wxsearch:ro
