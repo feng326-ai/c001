@@ -63,7 +63,8 @@ _DEFAULTS: Dict[str, Any] = {
         "filter_row_labels": ["排序", "类型", "时间", "范围"],
         "filter_sort": "最新",
         "filter_type": "文章",
-        "filter_time": "最近七天",
+        # 采集范围必须限制为最近一天；范围扩大时会把历史文章混入线索库。
+        "filter_time": "最近一天",
         "filter_scope": "",
     },
     # AI 清洗第一层（规则过滤）参数，全部可在 config.json 覆盖。
@@ -203,7 +204,7 @@ class Selectors:
     filter_row_labels: List[str] = field(default_factory=lambda: ["排序", "类型", "时间", "范围"])
     filter_sort: str = "最新"
     filter_type: str = "文章"
-    filter_time: str = "最近七天"
+    filter_time: str = "最近一天"
     filter_scope: str = ""
 
 
