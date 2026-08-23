@@ -1,6 +1,8 @@
 services:
   celery-worker:
     environment:
+      # 发布时默认先关闭；密钥 dry-run 验收后必须显式传 true 才恢复批处理。
+      LLM_CLEAN_ENABLED: ${LLM_CLEAN_ENABLED:-false}
       WXSEARCH_SECRETS_PATH: /run/secrets/wxsearch/secrets.json
     volumes:
       - /home/m/xiansuo/logs:/app/logs

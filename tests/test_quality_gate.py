@@ -133,6 +133,7 @@ def test_collect_release_mounts_external_read_only_secret_directory():
     compose = (
         Path(__file__).resolve().parents[1] / "docker-compose.collect-release.yml"
     ).read_text(encoding="utf-8")
+    assert "LLM_CLEAN_ENABLED: ${LLM_CLEAN_ENABLED:-false}" in compose
     assert "WXSEARCH_SECRETS_PATH: /run/secrets/wxsearch/secrets.json" in compose
     assert "${COLLECT_SECRETS_DIR:?COLLECT_SECRETS_DIR_required}" in compose
     assert ":/run/secrets/wxsearch:ro" in compose
