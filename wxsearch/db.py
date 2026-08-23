@@ -11,7 +11,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -56,7 +56,16 @@ CREATE INDEX IF NOT EXISTS idx_account ON articles(account);
 
 
 class Database:
-    def __init__(self, path: str):
+    """本地 SQLite 落库实现。
+
+    ``dedup`` 目前只用于保持与分布式 Sink 一致的构造契约；本地库继续使用
+    URL（或标题+公众号）唯一指纹做精确去重。无论走哪种落库实现，调用方都
+    可以通过 ``last_reason`` 判断本次保存结果。
+    """
+
+    def __init__(self, path: str, dedup: Any = None):
+        self.dedup = dedup
+        self.last_reason = ""
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self.conn = sqlite3.connect(path)
         self.conn.executescript(_SCHEMA)
@@ -71,6 +80,7 @@ class Database:
 
     def save(self, article: Article) -> bool:
         """保存一条记录。返回 True 表示新增，False 表示已存在（去重跳过）。"""
+        self.last_reason = ""
         fp = article.fingerprint()
         try:
             self.conn.execute(
@@ -93,8 +103,10 @@ class Database:
                 ),
             )
             self.conn.commit()
+            self.last_reason = "new"
             return True
         except sqlite3.IntegrityError:
+            self.last_reason = "exact_duplicate"
             return False
 
     def count(self, keyword: Optional[str] = None) -> int:
