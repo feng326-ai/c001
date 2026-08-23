@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -13,7 +13,7 @@ from wxsearch.ingest_quality import evaluate_article
 from wxsearch.models import Article
 
 
-NOW = datetime(2026, 8, 23, 12, 0, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc)
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def _article(**overrides):
         "source_channel": "wechat_pc",
         "keyword": "评选征集",
         "account": "活动组委会",
-        "publish_time": "2026-08-23T08:00:00+00:00",
+        "publish_time": (NOW - timedelta(hours=4)).isoformat(),
     }
     values.update(overrides)
     return Article(**values)
@@ -54,14 +54,14 @@ def test_common_recommendation_words_do_not_count_as_business_intent():
 def test_realtime_requires_parseable_and_fresh_publish_time():
     missing = evaluate_article(_article(publish_time=""), now=NOW)
     stale = evaluate_article(
-        _article(publish_time="2026-08-18T08:00:00+00:00"), now=NOW
+        _article(publish_time=(NOW - timedelta(days=5)).isoformat()), now=NOW
     )
     assert missing.reason == "missing_or_invalid_publish_time"
     assert stale.reason.startswith("rule_filter:") or stale.reason == "stale_realtime_article"
 
 
 def test_historical_backfill_keeps_relevant_old_evidence():
-    article = _article(publish_time="2024-08-23 08:00:00")
+    article = _article(publish_time=(NOW - timedelta(days=1095)).isoformat())
     decision = evaluate_article(article, mode="historical_backfill", now=NOW)
     assert decision.accepted is True
 
@@ -112,7 +112,7 @@ def test_distributed_payload_declares_realtime_mode():
         keyword="评选征集",
         title="评选活动报名通知",
         content="活动主办方正在征集报名。" * 10,
-        publish_time="2026-08-23 08:00",
+        publish_time=(NOW - timedelta(hours=4)).isoformat(),
     )
     payload = json.loads(DistributedSink._to_payload(collector_article))
     assert payload["_ingest_meta"] == {
