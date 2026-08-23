@@ -852,23 +852,6 @@
       loadLeads(1);
     }
     
-    // 页面加载完成后初始化
-    document.addEventListener('DOMContentLoaded', function() {
-      _currentFilterMode = mode;
-      // 更新 Tab 样式
-      document.querySelectorAll('#statsSection + .filters button').forEach(btn => {
-        btn.style.background = 'var(--panel-2)';
-        btn.style.color = 'var(--text-2)';
-      });
-      const activeBtn = document.getElementById(`tab-${mode}`);
-      activeBtn.style.background = 'var(--brand)';
-      activeBtn.style.color = '#fff';
-      
-      // 重置到第一页并重新加载
-      currentPage = 1;
-      loadLeads(1);
-    }
-
     // 加载线索数据（联动后端筛选：搜索关键词 / 状态 / 意图分类）
     async function loadLeads(page = 1) {
       const tbody = document.getElementById('leadsTableBody');
