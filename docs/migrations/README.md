@@ -100,3 +100,9 @@ docker exec wxsearch_db pg_dump -U admin wx_search > backup_before_migration.sql
 `024_review_ruleset.sql` 发布不可变规则版本、结构化完成/重审原因、租户私有 activation 历史、Review 规则快照和可解释评分快照，并向前修复“撤销 Grant 改写已完成审核”的问题。迁移不会为任何真实租户创建 activation，也不会开启审核 API。
 
 规则 activation 只能由受控管理身份逐租户创建或切换；应用运行角色只能读取规则、租户自己的 activation/评分，并精确执行 active-ruleset 锁函数。生产仍须完成 roster、受控分发、商机原子创建、Outbox publisher、预发布和单租户 canary，禁止绕过启动门禁。
+
+## 025 受控资源分发的启用边界
+
+`025_review_distributor.sql` 追加受信 Inbox、不可变批次与冻结租户 Target，并以四个已撤销 PUBLIC 的 `SECURITY DEFINER` 窄函数提供展开、单 Target 领取、应用和失败上报。分发只接受 `inbox_id` 或数据库生成的 `target_id + fencing_token`，不接受调用方提供的租户、策略、来源模式或评分。
+
+迁移不创建真实租户分发设置、不写 Inbox、不授予现有 Backend/Worker 角色执行权，也不接入 Celery 或 HTTP。生产启用必须单独创建非 owner、`NOBYPASSRLS` 的 Distributor LOGIN，完成私有 roster、逐租户审批设置、可信 Inbox writer、Outbox publisher、备份恢复、预发布和单租户 canary；在此之前 `REVIEW_DISTRIBUTOR_ENABLED` 必须保持 `false`。
