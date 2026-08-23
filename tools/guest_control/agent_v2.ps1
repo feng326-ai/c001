@@ -72,7 +72,7 @@ function Invoke-ControlledAction($Command) {
 
 while ($true) {
     try {
-        $raw = Invoke-WebRequest -Uri ("$($cfg.control_url.TrimEnd('/'))/$($cfg.device_id).json") -UseBasicParsing -TimeoutSec 10
+        $raw = Invoke-WebRequest -Uri ("$($cfg.control_url.TrimEnd('/'))/control-$($cfg.device_id).json") -UseBasicParsing -TimeoutSec 10
         $command = Test-Envelope (($raw.Content | ConvertFrom-Json))
         $result = Invoke-ControlledAction $command
         $state.sequence = [int64]$command.sequence
