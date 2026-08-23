@@ -18,6 +18,7 @@ except ModuleNotFoundError:
     sys.modules["uiautomation"] = MagicMock()
 
 from wxsearch import collector as collector_module
+from wxsearch.ai_filters.rule_filter import RuleBasedFilter
 from wxsearch.db import Article, Database
 
 
@@ -52,3 +53,15 @@ def test_collector_can_start_with_distributed_disabled(tmp_path, monkeypatch):
 
     assert isinstance(collector.db, Database)
     collector.db.close()
+
+
+def test_rule_filter_accepts_lightweight_pc_article_without_account_id():
+    article = Article(
+        keyword="测试",
+        title="正常行业文章",
+        content="有效正文" * 80,
+        publish_time="2026年8月23日 12:00",
+        url="https://mp.weixin.qq.com/s/example",
+    )
+
+    assert RuleBasedFilter().filter(article) == (True, "pass")

@@ -108,7 +108,9 @@ class RuleBasedFilter:
             return False, reason
         
         # 检查 6: 账号资质验证 (可选)
-        is_valid, reason = self._verify_account_quality(article.account_id)
+        # PC UIA 的轻量 Article 不保证提取公众号 __biz；该字段缺失时跳过可选
+        # 资质校验，不能让整套规则清洗因模型字段差异异常退出。
+        is_valid, reason = self._verify_account_quality(getattr(article, "account_id", ""))
         if not is_valid:
             return False, reason
         
