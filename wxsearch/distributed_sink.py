@@ -56,6 +56,12 @@ class DistributedSink:
             "summary": article.summary,
             # 采集时刻：payload 在抓到文章后立即构造，此刻≈真实采集时间（区别于 worker 入库时刻）。
             "collected_at": datetime.now().isoformat(),
+            # 显式区分实时采集与未来的近三年历史回填。旧节点缺失时服务端
+            # 按 realtime 处理，绝不能因为缺元数据自动放宽时间门禁。
+            "_ingest_meta": {
+                "schema": "wxsearch.ingest/1",
+                "collection_mode": "realtime_signal",
+            },
         }
         # 不传 created_at：让 worker 端 __post_init__ 自动填 datetime，避免字符串污染类型。
         return json.dumps(payload, ensure_ascii=False)

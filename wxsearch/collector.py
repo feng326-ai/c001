@@ -8,6 +8,7 @@ from .config import AppConfig
 from .db import Article, Database
 from .wechat_driver import DriverError, WeChatSearchDriver
 from .ai_filters.rule_filter import RuleBasedFilter
+from .ingest_quality import evaluate_article
 
 
 class Collector:
@@ -75,16 +76,12 @@ class Collector:
         filtered_count = 0
         dedup_count = 0
         for article in self.driver.iter_articles(win, keyword):
-            # AI 清洗第一层：规则过滤（广告/正文过短/乱码/过期/列表页）。
-            # 清洗仅为加分项，采用失败放行：过滤器自身报错绝不丢掉已采到的文章。
-            try:
-                is_valid, reason = self.rule_filter.filter(article)
-            except Exception as exc:  # noqa: BLE001
-                self.log.warning(f"  清洗器异常，放行本条：{article.title[:24]}（{exc}）")
-                is_valid, reason = True, "filter_error_passthrough"
-            if not is_valid:
+            # 入口门禁串联低质规则与高召回语义判断。规则自身异常也会返回拒绝，
+            # 绝不能恢复旧的 filter_error_passthrough。
+            decision = evaluate_article(article, mode="realtime_signal", rule_filter=self.rule_filter)
+            if not decision.accepted:
                 filtered_count += 1
-                self.log.info(f"  - 清洗过滤：{article.title}  [{reason}]")
+                self.log.info(f"  - 准入拒绝：{article.title}  [{decision.reason}]")
                 continue
 
             if self.db.save(article):
@@ -94,6 +91,9 @@ class Collector:
                     self.db.last_reason.startswith(("exact_duplicate", "similar_duplicate")):
                 dedup_count += 1
                 self.log.info(f"  = 去重跳过：{article.title}  [{self.db.last_reason}]")
+            else:
+                filtered_count += 1
+                self.log.info(f"  - 服务端拒绝：{article.title}  [{self.db.last_reason}]")
         if filtered_count:
             self.log.info(f"【清洗】关键词「{keyword}」过滤掉 {filtered_count} 条低质内容。")
         if dedup_count:

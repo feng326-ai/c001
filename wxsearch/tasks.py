@@ -62,6 +62,7 @@ from wxsearch.models import Article, QualifiedLead
 from wxsearch.smart_dedup_store import SmartDedupStore
 from wxsearch.content_hasher import ContentHasher
 from wxsearch.ai_filters.ai_analyzer import AIAnalyzer
+from wxsearch.ingest_quality import REALTIME_MODE, evaluate_article
 
 # AI 分析层：worker 进程级单例，开关由环境变量 AI_ENABLED 控制（默认关闭）。
 # 关闭时 analyze() 立即返回“跳过”，不影响既有去重入库流程。
@@ -138,6 +139,31 @@ celery_app.conf.beat_schedule = {
 
 # ==================== 核心任务：文章入库去重 ====================
 
+
+def _decode_article_payload(article_json: str):
+    """解析采集信封；旧节点缺少元数据时按 realtime_signal 收紧处理。"""
+    article_dict = json.loads(article_json)
+    if not isinstance(article_dict, dict):
+        raise ValueError("article payload must be a JSON object")
+    ingest_meta = article_dict.pop("_ingest_meta", {}) or {}
+    if not isinstance(ingest_meta, dict):
+        raise ValueError("_ingest_meta must be an object")
+    mode = str(
+        ingest_meta.get("collection_mode") or ingest_meta.get("mode") or REALTIME_MODE
+    ).strip()
+    return Article(**article_dict), mode
+
+
+def _permanent_rejection(reason: str, article=None) -> dict:
+    """构造不会触发 Celery 重试的业务拒绝结果。"""
+    return {
+        "success": False,
+        "reason": f"quality_rejected:{reason}",
+        "channel": str(getattr(article, "source_channel", "") or ""),
+        "keyword": str(getattr(article, "keyword", "") or ""),
+        "title": str(getattr(article, "title", "") or "")[:50],
+    }
+
 @celery_app.task(name="wxsearch.tasks.production_sync_task")
 def production_sync_task():
     """发送一批待同步事件；开关、鉴权和重试策略由 production_sync 管理。"""
@@ -158,52 +184,62 @@ def process_article_task(self, article_json: str):
     """
     
     try:
-        # 1. 反序列化 JSON
-        article_dict = json.loads(article_json)
+        # 1. 反序列化并执行永久准入校验；坏载荷/低质文章不重试。
+        try:
+            article, mode = _decode_article_payload(article_json)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            result = _permanent_rejection("invalid_payload")
+            log.warning(f"⛔ 采集载荷拒绝：{exc}")
+            return result
+
+        decision = evaluate_article(article, mode=mode)
+        if not decision.accepted:
+            result = _permanent_rejection(decision.reason, article)
+            log.info(
+                f"⛔ 准入拒绝 ({result['channel']}): {result['title']} - {decision.reason}"
+            )
+            return result
         
-        # 2. 转换为 Article 对象
-        article = Article(**article_dict)
-        
-        # 3. 初始化去重服务
+        # 2. 初始化去重服务
         store = SmartDedupStore(_db_config())
+        try:
+            # 3. 执行去重插入
+            success, reason = store.add_article(article)
         
-        # 4. 执行去重插入
-        success, reason = store.add_article(article)
+            result = {
+                "success": success,
+                "reason": reason,
+                "channel": article.source_channel,
+                "keyword": article.keyword,
+                "title": article.title[:50]
+            }
         
-        result = {
-            "success": success,
-            "reason": reason,
-            "channel": article.source_channel,
-            "keyword": article.keyword,
-            "title": article.title[:50]
-        }
-        
-        if success:
-            log.info(f"✅ 新增成功 ({result['channel']}): {result['title']}")
+            if success:
+                log.info(f"✅ 新增成功 ({result['channel']}): {result['title']}")
 
-            # 5. AI 分析层（可开关，默认关闭）：价值评分/意图分类/线索识别。
-            #    关闭时 analyze() 直接返回 analyzed=False，下方逻辑整体跳过。
-            ai = _ai_analyzer.analyze(article)
-            if ai.analyzed:
-                result["ai"] = ai.to_dict()
-                # 把评分回写 articles_core 的 7 个 AI 字段（按 add_article 的 RETURNING id 定位）。
-                m = re.search(r"ID:(\d+)", reason)
-                article_id = int(m.group(1)) if m else None
-                if article_id is not None:
-                    store.save_scoring(article_id, ai)
-                if ai.is_lead:
-                    result["is_lead"] = True
-                    # 高价值线索提升进 qualified_leads 管理表，供看板查看/标注/跟进。
+                # 4. AI 分析层（可开关，默认关闭）：价值评分/意图分类/线索识别。
+                #    关闭时 analyze() 直接返回 analyzed=False，下方逻辑整体跳过。
+                ai = _ai_analyzer.analyze(article)
+                if ai.analyzed:
+                    result["ai"] = ai.to_dict()
+                    # 把评分回写 articles_core 的 7 个 AI 字段（按 add_article 的 RETURNING id 定位）。
+                    m = re.search(r"ID:(\d+)", reason)
+                    article_id = int(m.group(1)) if m else None
                     if article_id is not None:
-                        store.promote_lead(article_id)
-                    log.info(f"⭐ 线索命中 [{ai.priority_level}/{ai.intent_category}]: {result['title']}")
+                        store.save_scoring(article_id, ai)
+                    if ai.is_lead:
+                        result["is_lead"] = True
+                        # 高价值线索提升进 qualified_leads 管理表，供看板查看/标注/跟进。
+                        if article_id is not None:
+                            store.promote_lead(article_id)
+                        log.info(f"⭐ 线索命中 [{ai.priority_level}/{ai.intent_category}]: {result['title']}")
 
-        else:
-            log.info(f"⚠️ 重复跳过 ({result['channel']}): {result['title']} - {reason}")
-        
-        store.close()
-        
-        return result
+            else:
+                log.info(f"⚠️ 重复跳过 ({result['channel']}): {result['title']} - {reason}")
+
+            return result
+        finally:
+            store.close()
         
     except Exception as exc:
         # 重试机制：最多重试 3 次
@@ -227,29 +263,58 @@ def process_batch_articles(self, articles_json_list: list):
     """
     
     try:
-        # 1. 转换为 Article 对象
-        articles = [Article(**json.loads(item)) for item in articles_json_list]
+        # 1. 单篇与批量入口使用同一准入策略，坏载荷和低质内容永久拒绝。
+        articles = []
+        rejected_reasons = {}
+        for item in articles_json_list:
+            try:
+                article, mode = _decode_article_payload(item)
+                decision = evaluate_article(article, mode=mode)
+                if not decision.accepted:
+                    rejected_reasons[decision.reason] = rejected_reasons.get(decision.reason, 0) + 1
+                    continue
+                articles.append(article)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                rejected_reasons["invalid_payload"] = rejected_reasons.get("invalid_payload", 0) + 1
+
+        rejected = len(articles_json_list) - len(articles)
+        if not articles:
+            result = {
+                "total": len(articles_json_list),
+                "accepted": 0,
+                "rejected": rejected,
+                "rejected_reasons": rejected_reasons,
+                "new": 0,
+                "url_duplicate": 0,
+                "exact_duplicate": 0,
+                "similar_duplicate": 0,
+                "errors": 0,
+            }
+            log.info(f"⛔ 批量准入全部拒绝：{json.dumps(result, ensure_ascii=False)}")
+            return result
         
         # 2. 初始化去重服务
         store = SmartDedupStore(_db_config())
-        
-        # 3. 批量插入
-        stats = store.bulk_insert(articles)
-        
-        result = {
-            "total": stats["total"],
-            "new": stats["new"],
-            "url_duplicate": stats["url_duplicate"],
-            "exact_duplicate": stats["exact_duplicate"],
-            "similar_duplicate": stats["similar_duplicate"],
-            "errors": stats["errors"]
-        }
-        
-        log.info(f"✅ 批量处理完成：{json.dumps(result)}")
-        
-        store.close()
-        
-        return result
+        try:
+            # 3. 批量插入
+            stats = store.bulk_insert(articles)
+
+            result = {
+                "total": len(articles_json_list),
+                "accepted": len(articles),
+                "rejected": rejected,
+                "rejected_reasons": rejected_reasons,
+                "new": stats["new"],
+                "url_duplicate": stats["url_duplicate"],
+                "exact_duplicate": stats["exact_duplicate"],
+                "similar_duplicate": stats["similar_duplicate"],
+                "errors": stats["errors"]
+            }
+
+            log.info(f"✅ 批量处理完成：{json.dumps(result, ensure_ascii=False)}")
+            return result
+        finally:
+            store.close()
         
     except Exception as exc:
         log.error(f"❌ 批量处理失败，准备重试：{exc}")
