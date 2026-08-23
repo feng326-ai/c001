@@ -48,7 +48,7 @@ def test_common_recommendation_words_do_not_count_as_business_intent():
     )
     decision = evaluate_article(article, now=NOW)
     assert decision.accepted is False
-    assert decision.reason == "missing_business_intent"
+    assert decision.reason == "blocked_generic_keyword"
 
 
 def test_explicitly_blocked_generic_keywords_are_rejected_before_search():
@@ -147,7 +147,7 @@ def test_single_and_batch_tasks_reject_before_opening_database():
     batch = process_batch_articles.run([bad_payload, "not-json"])
 
     assert single["success"] is False
-    assert single["reason"] == "quality_rejected:missing_business_intent"
+    assert single["reason"] == "quality_rejected:blocked_generic_keyword"
     assert batch["accepted"] == 0
     assert batch["rejected"] == 2
     assert batch["new"] == 0

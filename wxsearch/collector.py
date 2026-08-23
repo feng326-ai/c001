@@ -47,12 +47,6 @@ class Collector:
         for keyword in self.cfg.keywords:
             self.log.info("=" * 50)
             self.log.info(f"开始采集关键词：{keyword}")
-            keyword_decision = evaluate_keyword(keyword)
-            if not keyword_decision.accepted:
-                self.log.warning(
-                    f"关键词「{keyword}」已在搜索前拒绝：{keyword_decision.reason}"
-                )
-                continue
             try:
                 new = self._collect_one(keyword)
                 total_new += new
@@ -76,6 +70,14 @@ class Collector:
         return self._collect_one(keyword)
 
     def _collect_one(self, keyword: str) -> int:
+        # run() 与无人值守 collect_keyword() 共用这一入口；停用关键词必须在
+        # 任何微信 UI 操作之前拒绝，不能只保护手工单次运行路径。
+        keyword_decision = evaluate_keyword(keyword)
+        if not keyword_decision.accepted:
+            self.log.warning(
+                f"关键词「{keyword}」已在搜索前拒绝：{keyword_decision.reason}"
+            )
+            return 0
         win = self._open_and_filter(keyword)
 
         new_count = 0

@@ -67,26 +67,11 @@ def test_rule_filter_accepts_lightweight_pc_article_without_account_id():
     assert RuleBasedFilter().filter(article) == (True, "pass")
 
 
-def test_blocked_generic_keyword_never_opens_search():
-    class DatabaseSpy:
-        def __init__(self):
-            self.closed = False
-
-        @staticmethod
-        def count():
-            return 0
-
-        def close(self):
-            self.closed = True
-
+def test_unattended_blocked_generic_keyword_never_opens_search():
     collector = object.__new__(collector_module.Collector)
-    collector.cfg = SimpleNamespace(keywords=["全国 先进 推荐"])
     collector.log = logging.getLogger("blocked-keyword")
-    collector.db = DatabaseSpy()
-    collector._collect_one = lambda _keyword: (_ for _ in ()).throw(
+    collector._open_and_filter = lambda _keyword: (_ for _ in ()).throw(
         AssertionError("blocked keyword must not open search")
     )
 
-    collector.run()
-
-    assert collector.db.closed is True
+    assert collector.collect_keyword("全国 先进 推荐") == 0

@@ -143,6 +143,9 @@ def evaluate_article(
         return AdmissionDecision(False, "missing_title")
     if not keyword:
         return AdmissionDecision(False, "missing_keyword")
+    keyword_decision = evaluate_keyword(keyword)
+    if not keyword_decision.accepted:
+        return keyword_decision
 
     try:
         configured_age = int(
